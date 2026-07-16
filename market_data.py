@@ -241,26 +241,20 @@ def get_snapshot(include_sparkline=False, use_cache=True):
                 quote = None
                 source = "None"
 
-                # 1순위: S&P 500은 네이버 해외지수 API로 '실제 지수값'을 그대로 조회 (환산 불필요)
-                if SYMBOLS[name].get("naver_index"):
-                    quote = _fetch_naver_world_index(SYMBOLS[name]["naver_index"])
-                    if quote:
-                        source = "Naver World Index"
-
-                # 2순위: 해외 종목/ETF(S&P 500=SPY, TQQQ)는 실시간성이 우수한 네이버 금융 시세
-                if not quote and name in ("S&P 500", "TQQQ"):
-                    quote = _fetch_naver_quote(name)
-                    if quote:
-                        source = "Naver Finance"
-
-                # 3순위: 한투 API (국내지수 / 해외주식)
-                if not quote and SYMBOLS[name]["kis_type"]:
+                # 1순위: 한투 API (국내지수 / 해외주식) — 15:30 브리핑 시각엔 미국장이 마감이라 지연 무의미
+                if SYMBOLS[name]["kis_type"]:
                     quote = _fetch_kis_quote(name)
                     if quote:
                         source = "Korea Investment API"
 
-                # 4순위: 국내지수(KOSPI/KOSDAQ)는 네이버 지수 API로 폴백
-                if not quote and name in ("KOSPI", "KOSDAQ"):
+                # 2순위(폴백): S&P 500은 네이버 해외지수 API로 '실제 지수값'을 그대로 조회 (환산 불필요)
+                if not quote and SYMBOLS[name].get("naver_index"):
+                    quote = _fetch_naver_world_index(SYMBOLS[name]["naver_index"])
+                    if quote:
+                        source = "Naver World Index"
+
+                # 3순위(폴백): 네이버 금융 시세 (해외 ETF: S&P 500=SPY, TQQQ / 국내지수: KOSPI, KOSDAQ)
+                if not quote:
                     quote = _fetch_naver_quote(name)
                     if quote:
                         source = "Naver Finance"
