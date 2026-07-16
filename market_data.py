@@ -169,9 +169,9 @@ def get_snapshot(include_sparkline=False, use_cache=True):
                 if not quote:
                     continue
                 current = quote["current"]
-                # S&P 500은 KIS에서 SPY ETF로 가져왔으므로 지수 스케일(10배)로 환산
+                # S&P 500은 KIS에서 SPY ETF로 가져왔으므로 지수 스케일(10.05배)로 환산
                 if name == "S&P 500" and source.startswith("Korea"):
-                    current = current * 10
+                    current = current * 10.05
                 ath, ath_change_rate = get_ath_and_drawdown(name, current)
                 data[name] = {
                     "current": round(current, 2),
