@@ -40,6 +40,20 @@
 - **TQQQ 2차**: -50% 찍은 순간의 가격 P를 기준으로 0~P를 10등분한 가격을 밑돌 때마다 매수.
 - 같은 단계에서 두 번 울리지 않게 `alert_state.db`(작은 저장 파일)에 기록합니다.
 
+## 봇 2개 구조 (역할 분리)
+
+- **봇 1 (브리핑 봇)**: 우리 코드(`scheduler.py`)가 정해진 시간·조건에 자동으로 톡 전송. 토큰은 `.env`의 `TELEGRAM_BOT_TOKEN`.
+- **봇 2 (오픈클로 봇)**: 오픈클로가 관리. 내가 물어보면 우리 프로그램의 주소를 불러서 답함. 토큰은 오픈클로 설정에 넣음 (우리 `.env`에는 안 넣음).
+- 자세한 계획: `docs/telegram-two-bot-plan.md`
+
+## 온디맨드 주소 (오픈클로가 부르는 "지금 당장" 기능)
+
+| 주소 | 하는 일 |
+|------|---------|
+| `GET /api/summary` | 현재 시장·알람 상황을 글자로 요약 (`text` 필드) |
+| `GET /api/screenshot` | 지금 즉시 캡처한 대시보드 PNG 이미지 반환 |
+| `POST /api/briefing/send` | 지금 즉시 캡처해서 봇 1로 텔레그램 전송 |
+
 ## 자주 쓰는 명령어
 
 ```bash
@@ -48,6 +62,9 @@ python scheduler.py --test
 
 # 지금 바로 알람 조건 검사 (도달한 단계 있으면 톡 전송)
 python scheduler.py --check-alerts
+
+# 현재 상황을 글자로 요약해서 출력
+python scheduler.py --summary
 
 # 상시 실행 (평일 15:30 브리핑 + 10분마다 알람 검사)
 python scheduler.py
@@ -58,9 +75,10 @@ python backtest.py --start 2021-11-01 --end 2023-01-01
 
 ## 설정값 (.env 파일)
 
-- `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` : 텔레그램 봇 열쇠와 받을 방 번호
+- `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` : **봇 1(브리핑 봇)** 열쇠와 받을 방 번호
 - `KIS_APP_KEY`, `KIS_APP_SECRET`, `KIS_ACCOUNT_NO`, `KIS_CANV_MODE` : 한국투자증권 API 설정
 - `ALERT_CHECK_INTERVAL_MIN` : 알람 검사 주기(분), 기본 10분
+- `CHROMIUM_PATH` : (선택) 크롬 실행 파일 경로 직접 지정. 미설정 시 Playwright 기본값 사용
 
 ## 규칙 / 주의
 
@@ -70,5 +88,5 @@ python backtest.py --start 2021-11-01 --end 2023-01-01
 
 ## 아직 안 한 것 / 다음 후보
 
-- **"지금 당장 보여줘" 기능**: 정해진 시간이 아니어도, 명령 한 번에 바로 캡처 전송 / 알람 현황을 글자로 요약해주는 주소나 명령. (오픈클로 같은 대화형 봇과 붙이기 좋음)
+- **(사용자) 텔레그램 봇 2개 생성 + 연결**: 봇 1 토큰은 `.env`, 봇 2 토큰은 오픈클로에. `docs/telegram-two-bot-plan.md` 참고.
 - 자세한 현재 상황은 `handoff.md` 참고.

@@ -3,13 +3,15 @@ import threading
 from datetime import datetime
 
 import uvicorn
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi import FastAPI, BackgroundTasks
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 
 from market_data import get_snapshot, load_ath_from_history
 from trigger_engine import TriggerEngine
+from summary import build_summary_text
+from capture import capture_dashboard, capture_and_send
 
 load_dotenv()
 
@@ -56,6 +58,42 @@ def get_alerts():
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "data": engine.status(snapshot),
     }
+
+
+@app.get("/api/summary")
+def get_summary():
+    """
+    현재 시장·투자 타이밍 상황을 사람이 읽기 쉬운 글자로 요약해 반환.
+    오픈클로(대화형 봇)가 불러서 그대로 전달하기 좋음.
+    """
+    text = build_summary_text()
+    return {
+        "status": "success",
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "text": text,
+    }
+
+
+@app.get("/api/screenshot")
+def get_screenshot():
+    """
+    대시보드를 지금 즉시 캡처해 PNG 이미지로 반환 (전송하지 않음).
+    오픈클로가 이 이미지를 받아 자기 봇으로 전달할 수 있음.
+    """
+    path = "static/briefing_screenshot.png"
+    if capture_dashboard(path):
+        return FileResponse(path, media_type="image/png", filename="market_briefing.png")
+    return JSONResponse(status_code=503, content={"status": "error", "message": "capture failed"})
+
+
+@app.post("/api/briefing/send")
+def post_briefing_send(background_tasks: BackgroundTasks):
+    """
+    지금 즉시 캡처해서 브리핑 봇(봇 1)으로 텔레그램 전송을 예약.
+    바로 응답을 돌려주고 전송은 백그라운드에서 진행.
+    """
+    background_tasks.add_task(capture_and_send)
+    return {"status": "accepted", "message": "briefing capture & send started"}
 
 
 @app.get("/", response_class=HTMLResponse)

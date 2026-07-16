@@ -69,7 +69,15 @@ def main():
                         help="Run the capture and send function immediately and exit")
     parser.add_argument("--check-alerts", action="store_true",
                         help="Run the investment timing trigger check immediately and exit")
+    parser.add_argument("--summary", action="store_true",
+                        help="Print the current market & timing summary text and exit")
     args = parser.parse_args()
+
+    if args.summary:
+        from summary import build_summary_text
+        load_ath_from_history()
+        print(build_summary_text())
+        sys.exit(0)
 
     if args.check_alerts:
         print("--- Running Alert Check Mode ---")
