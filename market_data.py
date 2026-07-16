@@ -23,13 +23,20 @@ YF_SESSION.headers.update({
 
 # 추적 대상 심볼 정의
 # kis_type: 'domestic' (국내지수), 'overseas' (해외주식), None (yfinance 전용)
-# S&P 500의 경우 yfinance 차단을 우회하기 위해 KIS 해외주식 API로 SPY ETF를 조회한 뒤 10배를 곱해 지수로 환산합니다.
+# S&P 500은 '실제 지수'를 그대로 가져오는 것이 정확합니다.
+#   1순위: 네이버 해외지수 API(naver_index=".INX")로 진짜 S&P 500 지수값을 그대로 조회 → 환산(곱하기) 불필요
+#   폴백:  네이버/KIS로 SPY ETF를 가져온 경우에만 지수 스케일(SP500_SPY_MULTIPLIER)로 환산
 SYMBOLS = {
     "KOSPI":   {"yf": "^KS11", "kis_type": "domestic", "kis_code": "0001", "default_ath": 9385.59},
     "KOSDAQ":  {"yf": "^KQ11", "kis_type": "domestic", "kis_code": "1001", "default_ath": 1229.42},
-    "S&P 500": {"yf": "^GSPC", "kis_type": "overseas", "kis_code": ("AMS", "SPY"), "default_ath": 7620.90},
+    "S&P 500": {"yf": "^GSPC", "kis_type": "overseas", "kis_code": ("AMS", "SPY"), "naver_index": ".INX", "default_ath": 7620.90},
     "TQQQ":    {"yf": "TQQQ",  "kis_type": "overseas", "kis_code": ("NAS", "TQQQ"), "default_ath": 87.89},
 }
+
+# SPY ETF 가격을 S&P 500 지수로 환산할 때 쓰는 근사 계수.
+# 배당·추적오차로 매일 조금씩 달라지므로 정확하지 않습니다.
+# 되도록 실제 지수(_fetch_naver_world_index)를 쓰고, 이 값은 SPY만 받아온 경우의 '마지막 폴백'입니다.
+SP500_SPY_MULTIPLIER = 10.05
 
 
 # 역대 최고가 캐시 (기본값은 안전용, 시작 시 load_ath_from_history()로 갱신)
@@ -126,6 +133,45 @@ def _fetch_kis_quote(name):
     return None
 
 
+def _fetch_naver_world_index(reuters_code):
+    """
+    네이버 금융 해외지수 API로 '실제 지수값'을 실시간 조회.
+    SPY ETF를 곱해서 흉내내는 게 아니라 진짜 S&P 500 지수를 그대로 받아오므로 환산이 필요 없습니다.
+    reuters_code 예: S&P 500 = '.INX'
+    성공 시 {"current": 지수값, "change_rate": 등락률(%)} 반환, 실패 시 None.
+    """
+    try:
+        url = f"https://api.stock.naver.com/index/{reuters_code}/basic"
+        res = requests.get(url, headers=YF_SESSION.headers, timeout=5)
+        if res.status_code != 200:
+            return None
+        data = res.json()
+        close = data.get("closePrice")
+        if not close:
+            return None
+        current = float(str(close).replace(",", ""))
+        if current <= 0:
+            return None
+
+        # 등락률: fluctuationsRatio(부호 포함일 수 있음)를 우선 사용
+        rate_raw = data.get("fluctuationsRatio")
+        try:
+            change_rate = float(str(rate_raw).replace(",", "")) if rate_raw not in (None, "") else 0.0
+        except (TypeError, ValueError):
+            change_rate = 0.0
+
+        # 혹시 등락률이 부호 없이 절대값으로 오는 경우를 대비해 방향 코드로 부호 보정
+        # (네이버 코드: 1=상한, 2=상승, 3=보합, 4=하한, 5=하락)
+        direction = (data.get("compareToPreviousPrice") or {}).get("code")
+        if direction in ("4", "5") and change_rate > 0:
+            change_rate = -change_rate
+
+        return {"current": current, "change_rate": change_rate}
+    except Exception as e:
+        print(f"Naver world index error for {reuters_code}: {e}")
+    return None
+
+
 def _fetch_naver_quote(name):
     """네이버 금융 비공식 API로 주가/등락률 조회 (해외주식/국내지수 폴백용)."""
     naver_codes = {
@@ -194,32 +240,47 @@ def get_snapshot(include_sparkline=False, use_cache=True):
             for name in SYMBOLS:
                 quote = None
                 source = "None"
-                
-                # 해외 주식(S&P 500, TQQQ)은 실시간성이 더 우수한 네이버 금융을 우선 시도
-                if name in ["S&P 500", "TQQQ"]:
+
+                # 1순위: S&P 500은 네이버 해외지수 API로 '실제 지수값'을 그대로 조회 (환산 불필요)
+                if SYMBOLS[name].get("naver_index"):
+                    quote = _fetch_naver_world_index(SYMBOLS[name]["naver_index"])
+                    if quote:
+                        source = "Naver World Index"
+
+                # 2순위: 해외 종목/ETF(S&P 500=SPY, TQQQ)는 실시간성이 우수한 네이버 금융 시세
+                if not quote and name in ("S&P 500", "TQQQ"):
                     quote = _fetch_naver_quote(name)
-                    source = "Naver Finance"
-                    
-                # 네이버 금융이 실패했거나 국내 지수인 경우 한투 API 시도
+                    if quote:
+                        source = "Naver Finance"
+
+                # 3순위: 한투 API (국내지수 / 해외주식)
                 if not quote and SYMBOLS[name]["kis_type"]:
                     quote = _fetch_kis_quote(name)
-                    source = "Korea Investment API"
-                    
-                # 둘 다 실패 시 yfinance 시도
+                    if quote:
+                        source = "Korea Investment API"
+
+                # 4순위: 국내지수(KOSPI/KOSDAQ)는 네이버 지수 API로 폴백
+                if not quote and name in ("KOSPI", "KOSDAQ"):
+                    quote = _fetch_naver_quote(name)
+                    if quote:
+                        source = "Naver Finance"
+
+                # 마지막: yfinance (샌드박스/서버에서 차단될 수 있음)
                 if not quote:
                     try:
                         quote = _fetch_yf_quote(name)
-                        source = "Yahoo Finance"
+                        if quote:
+                            source = "Yahoo Finance"
                     except Exception as e:
                         print(f"yfinance quote error for {name}: {e}")
                         quote = None
-                        
+
                 if not quote:
                     continue
                 current = quote["current"]
-                # S&P 500은 KIS나 Naver에서 SPY ETF로 가져왔으므로 지수 스케일(10.05배)로 환산
-                if name == "S&P 500" and (source.startswith("Korea") or source.startswith("Naver")):
-                    current = current * 10.05
+                # SPY ETF로 가져온 S&P 500만 지수 스케일로 환산 (실제 지수/yfinance는 그대로 사용)
+                if name == "S&P 500" and source in ("Korea Investment API", "Naver Finance"):
+                    current = current * SP500_SPY_MULTIPLIER
                 ath, ath_change_rate = get_ath_and_drawdown(name, current)
                 data[name] = {
                     "current": round(current, 2),
