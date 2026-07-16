@@ -70,19 +70,42 @@ python scheduler.py --check-alerts   # 지금 알람 조건 검사
 ### C. 토큰 넣을 곳 (아주 중요 — 헷갈리지 마세요)
 | 토큰 | 어디에 넣나 |
 |------|-------------|
-| **토큰 A** (봇 1) | 우리 프로그램의 `.env` 파일 |
+| **토큰 A** (봇 1) | 우리 프로그램의 `.env` 파일 → `BRIEFING_BOT_TOKEN` |
 | **토큰 B** (봇 2) | **오픈클로 설정 화면** (우리 `.env`에는 넣지 않음) |
 
-`.env` 파일 예시:
+> 💡 서버 `.env`에 **이미 다른 봇 토큰(`TELEGRAM_BOT_TOKEN`)이 있어도 그대로 두세요.**
+> 이 프로그램은 `BRIEFING_BOT_TOKEN`을 **먼저** 사용하고, 없을 때만 기존 `TELEGRAM_BOT_TOKEN`으로 대체합니다.
+> 그래서 `BRIEFING_BOT_TOKEN`만 새로 채우면 기존 것과 **절대 안 섞입니다.**
+
+`.env` 파일에 추가할 줄 (기존 내용은 건드리지 말고 아래만 추가):
 ```env
-TELEGRAM_BOT_TOKEN=토큰A_여기에
-TELEGRAM_CHAT_ID=내_방_번호_여기에
+BRIEFING_BOT_TOKEN=토큰A_여기에
+BRIEFING_CHAT_ID=내_방_번호_여기에
 ```
+(전체 예시는 저장소의 `.env.example` 파일 참고)
 
 ### D. 확인
 ```bash
 python scheduler.py --test   # 봇 1에서 사진 톡이 오면 성공
 ```
+
+---
+
+## ❓ "앱 웹을 캡처하려면 서버에서 앱을 켜야 하나요?" → 네, 맞습니다
+
+캡처는 **실제 웹 화면을 브라우저로 열어 사진 찍는 방식**이라, 그 화면(웹 서버)이 켜져 있어야 합니다.
+다만 따로 두 개를 켤 필요는 없습니다 — `scheduler.py`가 **웹 서버를 자동으로 같이 켭니다.**
+
+| 하려는 것 | 웹 서버 필요? | 실행 방법 |
+|-----------|:---:|-----------|
+| 정기 브리핑 + 알람 (상시) | ✅ (자동으로 같이 켜짐) | `python scheduler.py` |
+| 지금 캡처해서 전송 (테스트) | ✅ (자동으로 같이 켜짐) | `python scheduler.py --test` |
+| 알람 조건만 검사 | ❌ (시세만 직접 조회) | `python scheduler.py --check-alerts` |
+| 상황 글자 요약 | ❌ | `python scheduler.py --summary` |
+| 오픈클로가 `/api/...` 호출 | ✅ (서버가 떠 있어야 함) | `python scheduler.py` 를 상시 실행 |
+
+즉, 서버에서 `python scheduler.py`를 **상시 켜두면** → 자동 브리핑/알람도 되고, 오픈클로가 부를 주소도 열립니다.
+(백그라운드 실행: `nohup python scheduler.py &` 또는 `pm2 start scheduler.py --name stock-bot`)
 
 ---
 

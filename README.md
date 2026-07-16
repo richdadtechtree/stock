@@ -58,9 +58,11 @@ stock/
 프로젝트 폴더 내에 `.env` 파일을 만들고 다음 값을 실제 값으로 수정합니다.
 
 ```env
-# 1. 텔레그램 봇 토큰 및 수신할 채팅방 ID
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
-TELEGRAM_CHAT_ID=your_telegram_chat_id_here
+# 1. 브리핑 봇(봇 1) 토큰 및 수신할 채팅방 ID
+#    서버에 이미 다른 TELEGRAM_BOT_TOKEN 이 있으면 그대로 두고 아래만 채우세요.
+#    (BRIEFING_ 값이 있으면 기존 TELEGRAM_ 값 대신 사용 → 안 섞임)
+BRIEFING_BOT_TOKEN=your_briefing_bot_token_here
+BRIEFING_CHAT_ID=your_telegram_chat_id_here
 
 # 2. 한국투자증권 API 키 설정
 KIS_CANV_MODE=VIRTUAL      # 실전투자의 경우 REAL, 모의투자의 경우 VIRTUAL

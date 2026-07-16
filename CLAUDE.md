@@ -75,7 +75,7 @@ python backtest.py --start 2021-11-01 --end 2023-01-01
 
 ## 설정값 (.env 파일)
 
-- `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` : **봇 1(브리핑 봇)** 열쇠와 받을 방 번호
+- `BRIEFING_BOT_TOKEN`, `BRIEFING_CHAT_ID` : **봇 1(브리핑 봇)** 열쇠와 받을 방 번호 (권장). 없으면 `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID`로 자동 대체 → 서버의 기존 토큰과 안 섞임
 - `KIS_APP_KEY`, `KIS_APP_SECRET`, `KIS_ACCOUNT_NO`, `KIS_CANV_MODE` : 한국투자증권 API 설정
 - `ALERT_CHECK_INTERVAL_MIN` : 알람 검사 주기(분), 기본 10분
 - `CHROMIUM_PATH` : (선택) 크롬 실행 파일 경로 직접 지정. 미설정 시 Playwright 기본값 사용
