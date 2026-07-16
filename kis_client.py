@@ -126,6 +126,41 @@ class KISClient:
             print(f"Error fetching KIS index {code}: {e}")
         return None
 
+    def get_overseas_price(self, symbol, exchange="NAS"):
+        """
+        Fetches overseas stock current price and rate of change.
+        exchange: 'NAS' (NASDAQ), 'NYS' (NYSE), 'AMS' (AMEX)
+        symbol: e.g. 'TQQQ'
+        """
+        if not self.token:
+            return None
+
+        url = f"{self.base_url}/uapi/overseas-price/v1/quotations/price"
+        params = {
+            "AUTH": "",
+            "EXCD": exchange,
+            "SYMB": symbol
+        }
+
+        try:
+            headers = self.get_headers("HHDFS00000300")
+            response = requests.get(url, headers=headers, params=params)
+            response.raise_for_status()
+            data = response.json()
+
+            if data.get("rt_cd") == "0":
+                output = data.get("output", {})
+                current = float(output.get("last") or 0)
+                if current <= 0:
+                    return None
+                return {
+                    "current": current,
+                    "change_rate": float(output.get("rate") or 0),
+                }
+        except Exception as e:
+            print(f"Error fetching KIS overseas price {exchange}/{symbol}: {e}")
+        return None
+
     def get_account_balance(self):
         """
         Fetches account evaluation balance.

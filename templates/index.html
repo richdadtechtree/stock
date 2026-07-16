@@ -89,6 +89,35 @@
                     </div>
                 </div>
             </div>
+
+            <!-- TQQQ Card (Skeleton/Default) -->
+            <div class="index-card loading-skeleton" id="card-TQQQ">
+                <div class="card-header">
+                    <span class="card-title">TQQQ <small class="card-subtitle">3x 나스닥</small></span>
+                    <span class="change-badge up" id="badge-TQQQ">+0.00%</span>
+                </div>
+                <div class="card-body">
+                    <div class="current-price" id="price-TQQQ">$0.00</div>
+                    <div class="ath-row">
+                        <span>역대 최고점 (ATH)</span>
+                        <span class="ath-drawdown down" id="ath-TQQQ">-0.00%</span>
+                    </div>
+                    <!-- Sparkline -->
+                    <div class="sparkline-container up" id="sparkline-container-TQQQ">
+                        <svg viewBox="0 0 300 50" width="100%" height="100%">
+                            <path class="sparkline-path" id="path-TQQQ" d="M 0 25 L 300 25" />
+                        </svg>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Investment Timing Status -->
+        <div class="alert-section" id="alert-section">
+            <div class="alert-title">🔔 투자 타이밍 현황</div>
+            <div class="alert-grid" id="alert-container">
+                <div class="alert-placeholder">투자 타이밍 데이터를 불러오는 중...</div>
+            </div>
         </div>
 
         <!-- Footer -->
@@ -168,7 +197,8 @@
                     const mappings = [
                         { key: 'KOSPI', id: 'KOSPI', pathId: 'path-KOSPI', containerId: 'sparkline-container-KOSPI' },
                         { key: 'KOSDAQ', id: 'KOSDAQ', pathId: 'path-KOSDAQ', containerId: 'sparkline-container-KOSDAQ' },
-                        { key: 'S&P 500', id: 'SP500', pathId: 'path-SP500', containerId: 'sparkline-container-SP500' }
+                        { key: 'S&P 500', id: 'SP500', pathId: 'path-SP500', containerId: 'sparkline-container-SP500' },
+                        { key: 'TQQQ', id: 'TQQQ', pathId: 'path-TQQQ', containerId: 'sparkline-container-TQQQ', currency: '$' }
                     ];
                     
                     mappings.forEach(m => {
@@ -178,7 +208,8 @@
                             card.classList.remove('loading-skeleton');
                             
                             // Prices
-                            document.getElementById(`price-${m.id}`).innerText = formatNumber(indexData.current);
+                            const prefix = m.currency || '';
+                            document.getElementById(`price-${m.id}`).innerText = prefix + formatNumber(indexData.current);
                             
                             // Badges & Colors
                             const badge = document.getElementById(`badge-${m.id}`);
@@ -211,8 +242,87 @@
             }
         }
 
+        // Load investment timing status from Backend API
+        async function fetchAlerts() {
+            try {
+                const response = await fetch('/api/alerts');
+                const result = await response.json();
+                if (result.status !== 'success') return;
+
+                const data = result.data;
+                const container = document.getElementById('alert-container');
+                const rows = [];
+
+                // KOSPI / KOSDAQ: -30/-40/-50/-60/-70% 분할 매수 단계
+                [['KOSPI', '코스피'], ['KOSDAQ', '코스닥']].forEach(([key, label]) => {
+                    const s = data[key];
+                    if (!s) return;
+                    const stageBadges = s.stages.map(st =>
+                        `<span class="stage-chip ${st.triggered ? 'done' : ''}">${st.stage}%${st.triggered ? ' ✅' : ''}</span>`
+                    ).join('');
+                    const next = s.next_stage !== null
+                        ? `다음: ${s.next_stage}% (${s.gap_pp.toFixed(1)}%p 남음)`
+                        : '모든 단계 완료';
+                    rows.push(`
+                        <div class="alert-row">
+                            <div class="alert-symbol">${label}</div>
+                            <div class="alert-dd ${s.drawdown >= 0 ? 'up' : 'down'}">${s.drawdown.toFixed(1)}%</div>
+                            <div class="alert-stages">${stageBadges}</div>
+                            <div class="alert-next">${next}</div>
+                        </div>`);
+                });
+
+                // TQQQ: 1차(-10%~-49%, 40회) / 2차(P 기준 10등분) 구간
+                const t = data['TQQQ'];
+                if (t) {
+                    let progress, next;
+                    if (t.phase2.active) {
+                        progress = `<span class="stage-chip done">2차 구간 (P=$${t.phase2.base.toFixed(2)})</span>
+                                    <span class="stage-chip">${t.phase2.done}/${t.phase2.total}회차</span>`;
+                        next = t.phase2.next_price !== null
+                            ? `다음 매수: $${t.phase2.next_price.toFixed(2)} 이하`
+                            : '2차 구간 완료';
+                    } else {
+                        progress = `<span class="stage-chip ${t.phase1.done > 0 ? 'done' : ''}">1차 ${t.phase1.done}/${t.phase1.total}회차${t.phase1.done > 0 ? ' ✅' : ''}</span>`;
+                        next = t.phase1.next_threshold !== null
+                            ? `다음 매수: ${t.phase1.next_threshold}% (${(t.drawdown - t.phase1.next_threshold).toFixed(1)}%p 남음)`
+                            : '1차 구간 완료';
+                    }
+                    rows.push(`
+                        <div class="alert-row">
+                            <div class="alert-symbol">TQQQ</div>
+                            <div class="alert-dd ${t.drawdown >= 0 ? 'up' : 'down'}">${t.drawdown.toFixed(1)}%</div>
+                            <div class="alert-stages">${progress}</div>
+                            <div class="alert-next">${next}</div>
+                        </div>`);
+                }
+
+                // S&P500 동반 하락 여부 배지
+                const sp = data['S&P 500'];
+                if (sp) {
+                    const crash = sp.us_crash
+                        ? '<span class="stage-chip crash">동반 하락 조건 충족 (-10% 이상)</span>'
+                        : '<span class="stage-chip">동반 하락 아님 (기준 -10%)</span>';
+                    rows.push(`
+                        <div class="alert-row">
+                            <div class="alert-symbol">S&P 500</div>
+                            <div class="alert-dd ${sp.drawdown >= 0 ? 'up' : 'down'}">${sp.drawdown.toFixed(1)}%</div>
+                            <div class="alert-stages">${crash}</div>
+                            <div class="alert-next">코스피/코스닥 배분 분기 판정용</div>
+                        </div>`);
+                }
+
+                if (rows.length > 0) {
+                    container.innerHTML = rows.join('');
+                }
+            } catch (error) {
+                console.error("Error loading alert status:", error);
+            }
+        }
+
         // Run once on load
         fetchIndices();
+        fetchAlerts();
     </script>
 </body>
 </html>

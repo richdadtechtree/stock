@@ -4,6 +4,9 @@
 # Token Cache
 .token_cache.json
 
+# Alert trigger state (SQLite)
+alert_state.db
+
 # Screenshots
 static/briefing_screenshot.png
 
