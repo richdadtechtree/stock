@@ -27,7 +27,7 @@ YF_SESSION.headers.update({
 SYMBOLS = {
     "KOSPI":   {"yf": "^KS11", "kis_type": "domestic", "kis_code": "0001", "default_ath": 3305.21},
     "KOSDAQ":  {"yf": "^KQ11", "kis_type": "domestic", "kis_code": "2001", "default_ath": 1062.03},
-    "S&P 500": {"yf": "^GSPC", "kis_type": "overseas", "kis_code": ("NYS", "SPY"), "default_ath": 5669.67},
+    "S&P 500": {"yf": "^GSPC", "kis_type": "overseas", "kis_code": ("AMS", "SPY"), "default_ath": 5669.67},
     "TQQQ":    {"yf": "TQQQ",  "kis_type": "overseas", "kis_code": ("NAS", "TQQQ"), "default_ath": 93.79},
 }
 
