@@ -8,8 +8,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+# 브리핑 봇(봇 1) 전용 설정.
+# 서버에 이미 다른 용도의 TELEGRAM_BOT_TOKEN 이 있을 수 있으므로,
+# 이 프로그램 전용으로 BRIEFING_BOT_TOKEN / BRIEFING_CHAT_ID 를 먼저 사용하고
+# 없으면 기존 TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID 로 자동 대체(하위 호환).
+BOT_TOKEN = os.getenv("BRIEFING_BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN")
+CHAT_ID = os.getenv("BRIEFING_CHAT_ID") or os.getenv("TELEGRAM_CHAT_ID")
 
 
 def send_telegram_message(text, parse_mode="Markdown"):
