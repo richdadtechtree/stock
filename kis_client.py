@@ -108,7 +108,7 @@ class KISClient:
         }
         
         try:
-            headers = self.get_headers("FHPST04000000")
+            headers = self.get_headers("FHPUP02100000")
             response = requests.get(url, headers=headers, params=params)
             response.raise_for_status()
             data = response.json()
