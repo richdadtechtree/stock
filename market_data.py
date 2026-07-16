@@ -9,9 +9,17 @@ import threading
 import time
 from datetime import datetime
 
+import requests
 import yfinance as yf
 
 from kis_client import KISClient
+
+# Create a custom requests session for yfinance to bypass cloud IP blocks (e.g. on Oracle Cloud, AWS)
+YF_SESSION = requests.Session()
+YF_SESSION.headers.update({
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+})
+
 
 # 추적 대상 심볼 정의
 # kis_type: 'domestic' (국내지수), 'overseas' (해외주식), None (yfinance 전용)
@@ -59,7 +67,7 @@ def load_ath_from_history():
     print("Loading historical ATH values...")
     for name, info in SYMBOLS.items():
         try:
-            hist = yf.Ticker(info["yf"]).history(period="max")
+            hist = yf.Ticker(info["yf"], session=YF_SESSION).history(period="max")
             if not hist.empty:
                 max_val = float(hist["Close"].max())
                 if max_val > ATH_CACHE.get(name, 0):
@@ -85,7 +93,7 @@ def get_ath_and_drawdown(name, current):
 def _fetch_yf_quote(name):
     """yfinance로 현재가/전일대비 등락률 조회."""
     info = SYMBOLS[name]
-    hist = yf.Ticker(info["yf"]).history(period="5d")
+    hist = yf.Ticker(info["yf"], session=YF_SESSION).history(period="5d")
     if hist.empty:
         return None
     current = float(hist["Close"].iloc[-1])
@@ -102,10 +110,15 @@ def _fetch_kis_quote(name):
         return None
     try:
         if info["kis_type"] == "domestic":
-            return client.get_domestic_index(info["kis_code"])
+            res = client.get_domestic_index(info["kis_code"])
+            # 모의투자 등에서 0 혹은 비정상 값이 오는 경우 None 처리하여 yfinance 폴백 유도
+            if res and res.get("current", 0) > 0:
+                return res
         if info["kis_type"] == "overseas":
             exchange, symbol = info["kis_code"]
-            return client.get_overseas_price(symbol, exchange)
+            res = client.get_overseas_price(symbol, exchange)
+            if res and res.get("current", 0) > 0:
+                return res
     except Exception as e:
         print(f"KIS quote error for {name}: {e}")
     return None
@@ -116,7 +129,7 @@ def _fetch_sparklines():
     result = {}
     for name, info in SYMBOLS.items():
         try:
-            hist = yf.Ticker(info["yf"]).history(period="30d")
+            hist = yf.Ticker(info["yf"], session=YF_SESSION).history(period="30d")
             if hist.empty:
                 result[name] = []
                 continue

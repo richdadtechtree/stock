@@ -16,6 +16,7 @@ import tempfile
 from datetime import datetime
 
 import pandas as pd
+import requests
 import yfinance as yf
 
 from trigger_engine import TriggerEngine
@@ -27,12 +28,17 @@ TICKERS = {
     "TQQQ": "TQQQ",
 }
 
+# Create a custom requests session for yfinance to bypass cloud IP blocks
+YF_SESSION = requests.Session()
+YF_SESSION.headers.update({
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+})
 
 def load_history(start=None, end=None):
     """모든 심볼의 종가 시계열을 날짜 기준으로 병합해 반환."""
     frames = {}
     for name, ticker in TICKERS.items():
-        hist = yf.Ticker(ticker).history(period="max", auto_adjust=True)
+        hist = yf.Ticker(ticker, session=YF_SESSION).history(period="max", auto_adjust=True)
         if hist.empty:
             print(f"[Warn] No history for {name} ({ticker})")
             continue
