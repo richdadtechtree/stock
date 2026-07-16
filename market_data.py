@@ -23,12 +23,14 @@ YF_SESSION.headers.update({
 
 # 추적 대상 심볼 정의
 # kis_type: 'domestic' (국내지수), 'overseas' (해외주식), None (yfinance 전용)
+# S&P 500의 경우 yfinance 차단을 우회하기 위해 KIS 해외주식 API로 SPY ETF를 조회한 뒤 10배를 곱해 지수로 환산합니다.
 SYMBOLS = {
     "KOSPI":   {"yf": "^KS11", "kis_type": "domestic", "kis_code": "0001", "default_ath": 3305.21},
     "KOSDAQ":  {"yf": "^KQ11", "kis_type": "domestic", "kis_code": "2001", "default_ath": 1062.03},
-    "S&P 500": {"yf": "^GSPC", "kis_type": None,       "kis_code": None,   "default_ath": 5669.67},
+    "S&P 500": {"yf": "^GSPC", "kis_type": "overseas", "kis_code": ("NYS", "SPY"), "default_ath": 5669.67},
     "TQQQ":    {"yf": "TQQQ",  "kis_type": "overseas", "kis_code": ("NAS", "TQQQ"), "default_ath": 93.79},
 }
+
 
 # 역대 최고가 캐시 (기본값은 안전용, 시작 시 load_ath_from_history()로 갱신)
 ATH_CACHE = {name: info["default_ath"] for name, info in SYMBOLS.items()}
@@ -167,6 +169,9 @@ def get_snapshot(include_sparkline=False, use_cache=True):
                 if not quote:
                     continue
                 current = quote["current"]
+                # S&P 500은 KIS에서 SPY ETF로 가져왔으므로 지수 스케일(10배)로 환산
+                if name == "S&P 500" and source.startswith("Korea"):
+                    current = current * 10
                 ath, ath_change_rate = get_ath_and_drawdown(name, current)
                 data[name] = {
                     "current": round(current, 2),
