@@ -1,0 +1,17 @@
+# Environments
+.env
+
+# Token Cache
+.token_cache.json
+
+# Screenshots
+static/briefing_screenshot.png
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# OS files
+.DS_Store
+Thumbs.db

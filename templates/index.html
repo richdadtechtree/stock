@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Market Briefing</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+    <!-- Background Orbs -->
+    <div class="background-glow orb-left"></div>
+    <div class="background-glow orb-right"></div>
+
+    <div class="dashboard-container" id="dashboard">
+        <!-- Header -->
+        <div class="header">
+            <div class="title-area">
+                <h1>DAILY MARKET BRIEFING</h1>
+                <p>한국투자증권 API 및 주요 시장 지수 현황</p>
+            </div>
+            <div class="time-area">
+                <div class="date" id="current-date">----년 --월 --일 (목)</div>
+                <div class="time" id="current-time">15:30:00</div>
+            </div>
+        </div>
+
+        <!-- Indices Cards Grid -->
+        <div class="indices-grid" id="indices-container">
+            <!-- KOSPI Card (Skeleton/Default) -->
+            <div class="index-card loading-skeleton" id="card-KOSPI">
+                <div class="card-header">
+                    <span class="card-title">KOSPI</span>
+                    <span class="change-badge up" id="badge-KOSPI">+0.00%</span>
+                </div>
+                <div class="card-body">
+                    <div class="current-price" id="price-KOSPI">0.00</div>
+                    <div class="ath-row">
+                        <span>역대 최고점 (ATH)</span>
+                        <span class="ath-drawdown down" id="ath-KOSPI">-0.00%</span>
+                    </div>
+                    <!-- Sparkline -->
+                    <div class="sparkline-container up" id="sparkline-container-KOSPI">
+                        <svg viewBox="0 0 300 50" width="100%" height="100%">
+                            <path class="sparkline-path" id="path-KOSPI" d="M 0 25 L 300 25" />
+                        </svg>
+                    </div>
+                </div>
+            </div>
+
+            <!-- KOSDAQ Card (Skeleton/Default) -->
+            <div class="index-card loading-skeleton" id="card-KOSDAQ">
+                <div class="card-header">
+                    <span class="card-title">KOSDAQ</span>
+                    <span class="change-badge up" id="badge-KOSDAQ">+0.00%</span>
+                </div>
+                <div class="card-body">
+                    <div class="current-price" id="price-KOSDAQ">0.00</div>
+                    <div class="ath-row">
+                        <span>역대 최고점 (ATH)</span>
+                        <span class="ath-drawdown down" id="ath-KOSDAQ">-0.00%</span>
+                    </div>
+                    <!-- Sparkline -->
+                    <div class="sparkline-container up" id="sparkline-container-KOSDAQ">
+                        <svg viewBox="0 0 300 50" width="100%" height="100%">
+                            <path class="sparkline-path" id="path-KOSDAQ" d="M 0 25 L 300 25" />
+                        </svg>
+                    </div>
+                </div>
+            </div>
+
+            <!-- S&P 500 Card (Skeleton/Default) -->
+            <div class="index-card loading-skeleton" id="card-SP500">
+                <div class="card-header">
+                    <span class="card-title">S&P 500</span>
+                    <span class="change-badge up" id="badge-SP500">+0.00%</span>
+                </div>
+                <div class="card-body">
+                    <div class="current-price" id="price-SP500">0.00</div>
+                    <div class="ath-row">
+                        <span>역대 최고점 (ATH)</span>
+                        <span class="ath-drawdown down" id="ath-SP500">-0.00%</span>
+                    </div>
+                    <!-- Sparkline -->
+                    <div class="sparkline-container up" id="sparkline-container-SP500">
+                        <svg viewBox="0 0 300 50" width="100%" height="100%">
+                            <path class="sparkline-path" id="path-SP500" d="M 0 25 L 300 25" />
+                        </svg>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <div class="briefing-tag">
+                <div class="briefing-dot"></div>
+                <span>오후 3시 30분 마감 브리핑</span>
+            </div>
+            <div class="branding">QUANT BRIEFING BOT</div>
+        </div>
+    </div>
+
+    <script>
+        // Update clock and date
+        function updateDateTime() {
+            const now = new Date();
+            
+            // Format Date
+            const options = { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' };
+            document.getElementById('current-date').innerText = now.toLocaleDateString('ko-KR', options);
+            
+            // Format Time
+            const timeStr = now.toTimeString().split(' ')[0];
+            document.getElementById('current-time').innerText = timeStr;
+        }
+        
+        setInterval(updateDateTime, 1000);
+        updateDateTime();
+
+        // Helper to format numbers with commas
+        function formatNumber(num) {
+            return num.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        // Draw dynamic SVG sparkline path
+        function drawSparkline(pathId, containerId, dataPoints, isUp) {
+            const path = document.getElementById(pathId);
+            const container = document.getElementById(containerId);
+            
+            if (!dataPoints || dataPoints.length < 2) return;
+            
+            // Set container color theme class
+            if (isUp) {
+                container.classList.remove('down');
+                container.classList.add('up');
+            } else {
+                container.classList.remove('up');
+                container.classList.add('down');
+            }
+            
+            const width = 300;
+            const height = 50;
+            const padding = 5;
+            
+            const min = Math.min(...dataPoints);
+            const max = Math.max(...dataPoints);
+            const range = max - min === 0 ? 1 : max - min;
+            
+            const points = dataPoints.map((val, index) => {
+                const x = (index / (dataPoints.length - 1)) * width;
+                const y = height - padding - ((val - min) / range) * (height - 2 * padding);
+                return `${x.toFixed(1)},${y.toFixed(1)}`;
+            });
+            
+            path.setAttribute('d', `M ${points.join(' L ')}`);
+        }
+
+        // Load data from Backend API
+        async function fetchIndices() {
+            try {
+                const response = await fetch('/api/indices');
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    const data = result.data;
+                    
+                    const mappings = [
+                        { key: 'KOSPI', id: 'KOSPI', pathId: 'path-KOSPI', containerId: 'sparkline-container-KOSPI' },
+                        { key: 'KOSDAQ', id: 'KOSDAQ', pathId: 'path-KOSDAQ', containerId: 'sparkline-container-KOSDAQ' },
+                        { key: 'S&P 500', id: 'SP500', pathId: 'path-SP500', containerId: 'sparkline-container-SP500' }
+                    ];
+                    
+                    mappings.forEach(m => {
+                        const indexData = data[m.key];
+                        if (indexData) {
+                            const card = document.getElementById(`card-${m.id}`);
+                            card.classList.remove('loading-skeleton');
+                            
+                            // Prices
+                            document.getElementById(`price-${m.id}`).innerText = formatNumber(indexData.current);
+                            
+                            // Badges & Colors
+                            const badge = document.getElementById(`badge-${m.id}`);
+                            const changeRate = indexData.change_rate;
+                            const isUp = changeRate >= 0;
+                            
+                            if (isUp) {
+                                badge.innerText = `+${changeRate.toFixed(2)}%`;
+                                badge.className = 'change-badge up';
+                            } else {
+                                badge.innerText = `${changeRate.toFixed(2)}%`;
+                                badge.className = 'change-badge down';
+                            }
+                            
+                            // ATH drawdown
+                            const athBadge = document.getElementById(`ath-${m.id}`);
+                            const athChange = indexData.ath_change_rate;
+                            athBadge.innerText = `${athChange.toFixed(2)}%`;
+                            athBadge.className = athChange >= 0 ? 'ath-drawdown up' : 'ath-drawdown down';
+                            
+                            // Sparkline
+                            if (indexData.sparkline && indexData.sparkline.length > 0) {
+                                drawSparkline(m.pathId, m.containerId, indexData.sparkline, isUp);
+                            }
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error("Error loading index metrics:", error);
+            }
+        }
+
+        // Run once on load
+        fetchIndices();
+    </script>
+</body>
+</html>
