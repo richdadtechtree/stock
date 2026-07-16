@@ -36,7 +36,7 @@
                 <div class="card-body">
                     <div class="current-price" id="price-KOSPI">0.00</div>
                     <div class="ath-row">
-                        <span>역대 최고점 (ATH)</span>
+                        <span>역대 최고가 (<span id="ath-val-KOSPI">0.00</span>)</span>
                         <span class="ath-drawdown down" id="ath-KOSPI">-0.00%</span>
                     </div>
                     <!-- Sparkline -->
@@ -57,7 +57,7 @@
                 <div class="card-body">
                     <div class="current-price" id="price-KOSDAQ">0.00</div>
                     <div class="ath-row">
-                        <span>역대 최고점 (ATH)</span>
+                        <span>역대 최고가 (<span id="ath-val-KOSDAQ">0.00</span>)</span>
                         <span class="ath-drawdown down" id="ath-KOSDAQ">-0.00%</span>
                     </div>
                     <!-- Sparkline -->
@@ -78,7 +78,7 @@
                 <div class="card-body">
                     <div class="current-price" id="price-SP500">0.00</div>
                     <div class="ath-row">
-                        <span>역대 최고점 (ATH)</span>
+                        <span>역대 최고가 (<span id="ath-val-SP500">0.00</span>)</span>
                         <span class="ath-drawdown down" id="ath-SP500">-0.00%</span>
                     </div>
                     <!-- Sparkline -->
@@ -99,7 +99,7 @@
                 <div class="card-body">
                     <div class="current-price" id="price-TQQQ">$0.00</div>
                     <div class="ath-row">
-                        <span>역대 최고점 (ATH)</span>
+                        <span>역대 최고가 (<span id="ath-val-TQQQ">$0.00</span>)</span>
                         <span class="ath-drawdown down" id="ath-TQQQ">-0.00%</span>
                     </div>
                     <!-- Sparkline -->
@@ -224,9 +224,13 @@
                                 badge.className = 'change-badge down';
                             }
                             
-                            // ATH drawdown
+                            // ATH price & drawdown
                             const athBadge = document.getElementById(`ath-${m.id}`);
+                            const athValEl = document.getElementById(`ath-val-${m.id}`);
                             const athChange = indexData.ath_change_rate;
+                            if (athValEl) {
+                                athValEl.innerText = prefix + formatNumber(indexData.ath);
+                            }
                             athBadge.innerText = `${athChange.toFixed(2)}%`;
                             athBadge.className = athChange >= 0 ? 'ath-drawdown up' : 'ath-drawdown down';
                             
