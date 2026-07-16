@@ -28,7 +28,7 @@ SYMBOLS = {
     "KOSPI":   {"yf": "^KS11", "kis_type": "domestic", "kis_code": "0001", "default_ath": 9385.59},
     "KOSDAQ":  {"yf": "^KQ11", "kis_type": "domestic", "kis_code": "1001", "default_ath": 1229.42},
     "S&P 500": {"yf": "^GSPC", "kis_type": "overseas", "kis_code": ("AMS", "SPY"), "default_ath": 7620.90},
-    "TQQQ":    {"yf": "TQQQ",  "kis_type": "overseas", "kis_code": ("NAS", "TQQQ"), "default_ath": 93.79},
+    "TQQQ":    {"yf": "TQQQ",  "kis_type": "overseas", "kis_code": ("NAS", "TQQQ"), "default_ath": 87.89},
 }
 
 
@@ -126,6 +126,41 @@ def _fetch_kis_quote(name):
     return None
 
 
+def _fetch_naver_quote(name):
+    """네이버 금융 비공식 API로 주가/등락률 조회 (해외주식/국내지수 폴백용)."""
+    naver_codes = {
+        "KOSPI": "KOSPI",
+        "KOSDAQ": "KOSDAQ",
+        "S&P 500": "SPY",
+        "TQQQ": "TQQQ.O"
+    }
+    code = naver_codes.get(name)
+    if not code:
+        return None
+    try:
+        if name in ["KOSPI", "KOSDAQ"]:
+            url = f"https://m.stock.naver.com/api/index/{code}/basic"
+            res = requests.get(url, headers=YF_SESSION.headers, timeout=5)
+            if res.status_code == 200:
+                data = res.json()
+                current = float(data.get("closePrice").replace(",", ""))
+                change_rate = float(data.get("compareToPreviousCloseRate", 0))
+                return {"current": current, "change_rate": change_rate}
+        else:
+            url = f"https://api.stock.naver.com/stock/{code}/basic"
+            res = requests.get(url, headers=YF_SESSION.headers, timeout=5)
+            if res.status_code == 200:
+                data = res.json()
+                current = float(data.get("closePrice").replace(",", ""))
+                diff = float(data.get("compareToPreviousClosePrice", "0").replace(",", ""))
+                prev = current - diff
+                change_rate = (diff / prev) * 100 if prev else 0.0
+                return {"current": current, "change_rate": change_rate}
+    except Exception as e:
+        print(f"Naver quote error for {name}: {e}")
+    return None
+
+
 def _fetch_sparklines():
     """최근 30일 종가를 0~100으로 정규화한 스파크라인 데이터."""
     result = {}
@@ -157,20 +192,33 @@ def get_snapshot(include_sparkline=False, use_cache=True):
         else:
             data = {}
             for name in SYMBOLS:
-                quote = _fetch_kis_quote(name)
-                source = "Korea Investment API"
+                quote = None
+                source = "None"
+                
+                # 해외 주식(S&P 500, TQQQ)은 실시간성이 더 우수한 네이버 금융을 우선 시도
+                if name in ["S&P 500", "TQQQ"]:
+                    quote = _fetch_naver_quote(name)
+                    source = "Naver Finance"
+                    
+                # 네이버 금융이 실패했거나 국내 지수인 경우 한투 API 시도
+                if not quote and SYMBOLS[name]["kis_type"]:
+                    quote = _fetch_kis_quote(name)
+                    source = "Korea Investment API"
+                    
+                # 둘 다 실패 시 yfinance 시도
                 if not quote:
                     try:
                         quote = _fetch_yf_quote(name)
+                        source = "Yahoo Finance"
                     except Exception as e:
                         print(f"yfinance quote error for {name}: {e}")
                         quote = None
-                    source = "Yahoo Finance"
+                        
                 if not quote:
                     continue
                 current = quote["current"]
-                # S&P 500은 KIS에서 SPY ETF로 가져왔으므로 지수 스케일(10.05배)로 환산
-                if name == "S&P 500" and source.startswith("Korea"):
+                # S&P 500은 KIS나 Naver에서 SPY ETF로 가져왔으므로 지수 스케일(10.05배)로 환산
+                if name == "S&P 500" and (source.startswith("Korea") or source.startswith("Naver")):
                     current = current * 10.05
                 ath, ath_change_rate = get_ath_and_drawdown(name, current)
                 data[name] = {
