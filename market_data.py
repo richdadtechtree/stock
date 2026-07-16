@@ -25,9 +25,9 @@ YF_SESSION.headers.update({
 # kis_type: 'domestic' (국내지수), 'overseas' (해외주식), None (yfinance 전용)
 # S&P 500의 경우 yfinance 차단을 우회하기 위해 KIS 해외주식 API로 SPY ETF를 조회한 뒤 10배를 곱해 지수로 환산합니다.
 SYMBOLS = {
-    "KOSPI":   {"yf": "^KS11", "kis_type": "domestic", "kis_code": "0001", "default_ath": 3305.21},
-    "KOSDAQ":  {"yf": "^KQ11", "kis_type": "domestic", "kis_code": "2001", "default_ath": 1062.03},
-    "S&P 500": {"yf": "^GSPC", "kis_type": "overseas", "kis_code": ("AMS", "SPY"), "default_ath": 5669.67},
+    "KOSPI":   {"yf": "^KS11", "kis_type": "domestic", "kis_code": "0001", "default_ath": 9114.55},
+    "KOSDAQ":  {"yf": "^KQ11", "kis_type": "domestic", "kis_code": "2001", "default_ath": 1226.18},
+    "S&P 500": {"yf": "^GSPC", "kis_type": "overseas", "kis_code": ("AMS", "SPY"), "default_ath": 7609.78},
     "TQQQ":    {"yf": "TQQQ",  "kis_type": "overseas", "kis_code": ("NAS", "TQQQ"), "default_ath": 93.79},
 }
 
