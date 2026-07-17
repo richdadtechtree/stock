@@ -241,23 +241,24 @@ def get_snapshot(include_sparkline=False, use_cache=True):
                 quote = None
                 source = "None"
 
-                # 1순위: 네이버.
-                #  - S&P 500은 네이버 해외지수 .INX로 '진짜 지수값' 그대로 (SPY 환산 아님)
-                #  - 그 외(코스피/코스닥/TQQQ)는 네이버 금융 시세/지수
+                # S&P 500만 네이버 해외지수 .INX로 '진짜 지수값' 그대로 조회 (SPY 환산 아님).
+                # 나머지(코스피·코스닥·TQQQ)는 한투를 1순위로 사용.
                 if SYMBOLS[name].get("naver_index"):
                     quote = _fetch_naver_world_index(SYMBOLS[name]["naver_index"])
                     if quote:
                         source = "Naver World Index"
-                if not quote:
-                    quote = _fetch_naver_quote(name)
-                    if quote:
-                        source = "Naver Finance"
 
-                # 2순위(폴백): 한투 API (네이버 실패 시)
+                # 1순위: 한투 API (코스피/코스닥/TQQQ). 미국장 마감 시각이라 지연 무의미.
                 if not quote and SYMBOLS[name]["kis_type"]:
                     quote = _fetch_kis_quote(name)
                     if quote:
                         source = "Korea Investment API"
+
+                # 폴백: 네이버 금융 시세 (한투 실패 시 / S&P 500=SPY, TQQQ, 코스피, 코스닥)
+                if not quote:
+                    quote = _fetch_naver_quote(name)
+                    if quote:
+                        source = "Naver Finance"
 
                 # 마지막: yfinance (샌드박스/서버에서 차단될 수 있음)
                 if not quote:
