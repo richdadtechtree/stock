@@ -15,6 +15,14 @@ from notifier import send_telegram_message
 
 load_dotenv()
 
+# nohup 등으로 로그를 '파일'에 리다이렉트하면 파이썬이 출력을 모아뒀다(버퍼) 나중에 씁니다.
+# 실시간으로 로그가 찍히도록 줄 단위 즉시 출력(line-buffering)으로 전환.
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+except Exception:
+    pass
+
 # Server config
 PORT = int(os.getenv("PORT", 8000))
 HOST = os.getenv("HOST", "127.0.0.1")
