@@ -171,6 +171,10 @@ def main():
     print("Press Ctrl+C to exit.")
     print("--------------------------------------------------")
 
+    # 시작 직후 즉시 1회 알람 체크 (10분을 기다리지 않고 바로 현황 확인 + 이미 도달한 단계 알림)
+    print("[Startup] Running initial trigger check now...")
+    alert_job()
+
     try:
         scheduler.start()
     except (KeyboardInterrupt, SystemExit):
