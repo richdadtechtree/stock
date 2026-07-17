@@ -105,7 +105,9 @@ def main():
     load_ath_from_history()
 
     # Initialize APScheduler
-    scheduler = BlockingScheduler()
+    # 서버 시간이 UTC여도 항상 '한국시간(KST)' 기준으로 돌도록 타임존을 고정.
+    # (이걸 안 하면 15:30이 서버 UTC 15:30 = 한국 00:30에 실행되는 문제 발생)
+    scheduler = BlockingScheduler(timezone="Asia/Seoul")
 
     # Schedule job: Monday to Friday at 15:30 — 마감 브리핑 캡처 전송
     scheduler.add_job(
