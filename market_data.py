@@ -5,6 +5,8 @@
 - 국내 지수/해외 종목은 한국투자증권 API 우선, 실패 시 yfinance 폴백
 - 역대 최고가(ATH)는 yfinance 전체 기간 데이터로 계산해 캐싱
 """
+import logging
+import os
 import threading
 import time
 from datetime import datetime
@@ -13,6 +15,15 @@ import requests
 import yfinance as yf
 
 from kis_client import KISClient
+
+# yfinance는 서버(클라우드)에서 차단되어 항상 실패하므로, 시끄러운 내부 로그를 끔.
+# ("Failed to get ticker ... possibly delisted" 같은 메시지가 로그를 더럽히는 것 방지)
+logging.getLogger("yfinance").setLevel(logging.CRITICAL)
+
+# yfinance 완전 비활성화 스위치. 서버에서 .env에 DISABLE_YFINANCE=1 로 두면
+# yfinance 호출 자체를 건너뛰어 로그가 깔끔해지고 시작이 빨라집니다.
+# (시세는 네이버·한투로, 역대 최고가는 코드의 기본값으로 충분)
+YF_DISABLED = os.getenv("DISABLE_YFINANCE", "").strip().lower() in ("1", "true", "yes", "on")
 
 # Create a custom requests session for yfinance to bypass cloud IP blocks (e.g. on Oracle Cloud, AWS)
 YF_SESSION = requests.Session()
@@ -73,6 +84,9 @@ def load_ath_from_history():
     yfinance 전체 기간 데이터로 각 심볼의 역대 최고가(ATH)를 계산해 캐시를 갱신.
     프로세스 시작 시 백그라운드에서 1회 호출 권장.
     """
+    if YF_DISABLED:
+        print("Loading historical ATH values... (yfinance disabled → keeping default ATH values)")
+        return
     print("Loading historical ATH values...")
     for name, info in SYMBOLS.items():
         try:
@@ -101,6 +115,8 @@ def get_ath_and_drawdown(name, current):
 
 def _fetch_yf_quote(name):
     """yfinance로 현재가/전일대비 등락률 조회."""
+    if YF_DISABLED:
+        return None
     info = SYMBOLS[name]
     hist = yf.Ticker(info["yf"], session=YF_SESSION).history(period="5d")
     if hist.empty:
@@ -210,6 +226,8 @@ def _fetch_naver_quote(name):
 def _fetch_sparklines():
     """최근 30일 종가를 0~100으로 정규화한 스파크라인 데이터."""
     result = {}
+    if YF_DISABLED:
+        return {name: [] for name in SYMBOLS}
     for name, info in SYMBOLS.items():
         try:
             hist = yf.Ticker(info["yf"], session=YF_SESSION).history(period="30d")
