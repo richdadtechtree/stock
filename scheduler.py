@@ -71,6 +71,8 @@ def main():
                         help="Run the investment timing trigger check immediately and exit")
     parser.add_argument("--summary", action="store_true",
                         help="Print the current market & timing summary text and exit")
+    parser.add_argument("--at", metavar="HH:MM",
+                        help="지정한 한국시간(KST)에 딱 한 번 브리핑 캡처를 전송하고 종료 (테스트용). 예: --at 09:20")
     args = parser.parse_args()
 
     if args.summary:
@@ -99,6 +101,39 @@ def main():
         success = capture_and_send()
         print(f"Test Run Completed. Status: {'SUCCESS' if success else 'FAILED'}")
         print("Exiting test mode.")
+        sys.exit(0)
+
+    if args.at:
+        from datetime import timedelta
+        from zoneinfo import ZoneInfo
+        kst = ZoneInfo("Asia/Seoul")
+        try:
+            hh, mm = (int(x) for x in args.at.split(":"))
+        except ValueError:
+            print(f"[Error] --at 형식이 잘못됐습니다. 'HH:MM' 형태로 주세요. 예: --at 09:20 (입력: {args.at})")
+            sys.exit(1)
+
+        now = datetime.now(kst)
+        target = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+        if target <= now:  # 이미 지난 시각이면 내일로
+            target += timedelta(days=1)
+
+        print("--- Running One-time Scheduled Test (--at) ---")
+        print(f"현재 한국시간: {now.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"예약된 캡처 전송: {target.strftime('%Y-%m-%d %H:%M:%S')} (KST) — 딱 한 번 실행 후 종료")
+
+        once_scheduler = BlockingScheduler(timezone=kst)
+
+        def _one_time_briefing():
+            daily_job()
+            once_scheduler.shutdown(wait=False)  # 한 번 실행 후 스스로 종료
+
+        once_scheduler.add_job(_one_time_briefing, 'date', run_date=target, id='one_time_test')
+        try:
+            once_scheduler.start()
+        except (KeyboardInterrupt, SystemExit):
+            pass
+        print("One-time test finished. Exiting.")
         sys.exit(0)
 
     # ATH 초기 로딩 (트리거 판정 정확도를 위해 시작 시 1회)
