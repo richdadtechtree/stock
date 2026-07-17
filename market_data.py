@@ -241,24 +241,23 @@ def get_snapshot(include_sparkline=False, use_cache=True):
                 quote = None
                 source = "None"
 
-                # 1순위: 실제 해외지수가 있는 심볼(S&P 500)은 네이버 .INX로 '진짜 지수값'을 그대로 조회.
-                #        한투는 SPY ETF×10.05 환산이라 오차가 남으므로, 정확도를 위해 실제 지수를 먼저 씀.
+                # 1순위: 네이버.
+                #  - S&P 500은 네이버 해외지수 .INX로 '진짜 지수값' 그대로 (SPY 환산 아님)
+                #  - 그 외(코스피/코스닥/TQQQ)는 네이버 금융 시세/지수
                 if SYMBOLS[name].get("naver_index"):
                     quote = _fetch_naver_world_index(SYMBOLS[name]["naver_index"])
                     if quote:
                         source = "Naver World Index"
-
-                # 2순위: 한투 API (국내지수 KOSPI/KOSDAQ, 해외주식 TQQQ). 미국장 마감 시각이라 지연 무의미.
-                if not quote and SYMBOLS[name]["kis_type"]:
-                    quote = _fetch_kis_quote(name)
-                    if quote:
-                        source = "Korea Investment API"
-
-                # 3순위(폴백): 네이버 금융 시세 (해외 ETF: S&P 500=SPY, TQQQ / 국내지수: KOSPI, KOSDAQ)
                 if not quote:
                     quote = _fetch_naver_quote(name)
                     if quote:
                         source = "Naver Finance"
+
+                # 2순위(폴백): 한투 API (네이버 실패 시)
+                if not quote and SYMBOLS[name]["kis_type"]:
+                    quote = _fetch_kis_quote(name)
+                    if quote:
+                        source = "Korea Investment API"
 
                 # 마지막: yfinance (샌드박스/서버에서 차단될 수 있음)
                 if not quote:
