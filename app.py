@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 
-from market_data import get_snapshot, load_ath_from_history
+from market_data import get_snapshot, load_ath_from_history, get_custom_stocks_snapshot
 from trigger_engine import TriggerEngine
 from summary import build_summary_text
 from capture import capture_dashboard, capture_and_send
@@ -57,6 +57,21 @@ def get_alerts():
         "status": "success",
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "data": engine.status(snapshot),
+    }
+
+
+@app.get("/api/custom-stocks")
+def get_custom_stocks():
+    """
+    관심 종목 및 ETF의 현재가, 전일대비 등락률, 오늘 알람 여부 반환.
+    """
+    custom_snapshot = get_custom_stocks_snapshot(use_cache=True)
+    engine = TriggerEngine()
+    data = engine.get_custom_stocks_status(custom_snapshot)
+    return {
+        "status": "success",
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "data": data,
     }
 
 

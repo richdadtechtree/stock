@@ -126,6 +126,36 @@ class KISClient:
             print(f"Error fetching KIS index {code}: {e}")
         return None
 
+    def get_domestic_price(self, code):
+        """
+        Fetches domestic stock/ETF current price and rate of change.
+        code: 6-digit stock code (e.g. '005930')
+        """
+        if not self.token:
+            return None
+            
+        url = f"{self.base_url}/uapi/domestic-stock/v1/quotations/inquire-price"
+        params = {
+            "FID_COND_MRKT_DIV_CODE": "J",
+            "FID_INPUT_ISCD": code
+        }
+        
+        try:
+            headers = self.get_headers("FHKST01010100")
+            response = requests.get(url, headers=headers, params=params)
+            response.raise_for_status()
+            data = response.json()
+            
+            if data.get("rt_cd") == "0":
+                output = data.get("output", {})
+                return {
+                    "current": float(output.get("stck_prpr", 0)),
+                    "change_rate": float(output.get("prdy_ctrt", 0)),
+                }
+        except Exception as e:
+            print(f"Error fetching KIS domestic stock {code}: {e}")
+        return None
+
     def get_overseas_price(self, symbol, exchange="NAS"):
         """
         Fetches overseas stock current price and rate of change.

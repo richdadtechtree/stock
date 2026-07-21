@@ -43,6 +43,7 @@ SNAPSHOT_TTL = 60      # seconds
 SPARKLINE_TTL = 300    # seconds
 _snapshot_cache = {"ts": 0, "data": None}
 _sparkline_cache = {"ts": 0, "data": None}
+_custom_snapshot_cache = {"ts": 0, "data": None}
 _lock = threading.Lock()
 
 
@@ -241,8 +242,161 @@ def get_snapshot(include_sparkline=False, use_cache=True):
         return data
 
 
+def parse_monitored_stocks():
+    """monitored_stocks.json 파일에서 모니터링 대상 주식/ETF 목록을 읽어옵니다. 파일이 없으면 기본값으로 생성합니다."""
+    import json
+    import os
+    
+    file_path = "monitored_stocks.json"
+    default_stocks = {
+        "005930": "삼성전자",
+        "371160": "TIGER 미국필반나",
+        "AAPL": "애플",
+        "TSLA": "테슬라"
+    }
+    
+    if not os.path.exists(file_path):
+        try:
+            with open(file_path, "w", encoding="utf-8") as f:
+                json.dump(default_stocks, f, indent=4, ensure_ascii=False)
+            print(f"Created default monitored stocks file: {file_path}")
+        except Exception as e:
+            print(f"Error creating default {file_path}: {e}")
+        return default_stocks
+        
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Error reading {file_path}: {e}")
+        return default_stocks
+
+
+def _fetch_custom_quote(symbol):
+    """
+    개별 커스텀 종목(국내 6자리 코드 또는 해외 티커)의 시세를 가져옵니다.
+    """
+    client = get_kis_client()
+    
+    if symbol.isdigit():
+        # 국내 주식 / ETF
+        # 1. KIS 국내 주가 API 우선 시도
+        if client:
+            try:
+                res = client.get_domestic_price(symbol)
+                if res and res.get("current", 0) > 0:
+                    return {
+                        "current": res["current"],
+                        "change_rate": res["change_rate"],
+                        "source": "Korea Investment API"
+                    }
+            except Exception as e:
+                print(f"KIS domestic quote error for {symbol}: {e}")
+        
+        # 2. 실패 시 yfinance 폴백 (KOSPI .KS 우선, 실패 시 KOSDAQ .KQ 시도)
+        for suffix in [".KS", ".KQ"]:
+            try:
+                hist = yf.Ticker(symbol + suffix, session=YF_SESSION).history(period="2d")
+                if not hist.empty:
+                    current = float(hist["Close"].iloc[-1])
+                    prev_close = float(hist["Close"].iloc[-2]) if len(hist) > 1 else current
+                    change_rate = ((current - prev_close) / prev_close) * 100 if prev_close else 0.0
+                    return {
+                        "current": current,
+                        "change_rate": change_rate,
+                        "source": "Yahoo Finance"
+                    }
+            except Exception as e:
+                print(f"yfinance quote error for {symbol}{suffix}: {e}")
+                
+    else:
+        # 해외 주식 / ETF (e.g. AAPL, VOO, QQQ)
+        # 1. yfinance 우선 시도 (미국의 경우 심볼 매칭이 매우 신뢰성 있음)
+        try:
+            hist = yf.Ticker(symbol, session=YF_SESSION).history(period="2d")
+            if not hist.empty:
+                current = float(hist["Close"].iloc[-1])
+                prev_close = float(hist["Close"].iloc[-2]) if len(hist) > 1 else current
+                change_rate = ((current - prev_close) / prev_close) * 100 if prev_close else 0.0
+                return {
+                    "current": current,
+                    "change_rate": change_rate,
+                    "source": "Yahoo Finance"
+                }
+        except Exception as e:
+            print(f"yfinance quote error for US symbol {symbol}: {e}")
+            
+        # 2. 실패 시 KIS 해외 주가 API 폴백 (거래소 순차 시도)
+        if client:
+            for ex in ["NAS", "NYS", "AMS"]:
+                try:
+                    res = client.get_overseas_price(symbol, ex)
+                    if res and res.get("current", 0) > 0:
+                        return {
+                            "current": res["current"],
+                            "change_rate": res["change_rate"],
+                            "source": "Korea Investment API"
+                        }
+                except Exception as e:
+                    print(f"KIS overseas quote error for {symbol} on {ex}: {e}")
+                    
+    return None
+
+
+def get_custom_stocks_snapshot(use_cache=True):
+    """
+    모니터링 대상 커스텀 종목들의 현재 스냅샷을 반환합니다. (병렬 처리로 로딩 속도 최적화)
+    """
+    global _custom_snapshot_cache
+    with _lock:
+        now = time.time()
+        if use_cache and _custom_snapshot_cache["data"] and now - _custom_snapshot_cache["ts"] < SNAPSHOT_TTL:
+            return {k: dict(v) for k, v in _custom_snapshot_cache["data"].items()}
+        
+        stocks = parse_monitored_stocks()
+        data = {}
+        
+        import concurrent.futures
+        
+        def fetch_task(symbol, name):
+            try:
+                quote = _fetch_custom_quote(symbol)
+                if quote:
+                    return symbol, {
+                        "name": name,
+                        "current": round(quote["current"], 2),
+                        "change_rate": round(quote["change_rate"], 2),
+                        "source": quote["source"],
+                        "is_etf": "etf" in name.lower() or "etf" in symbol.lower() or symbol.endswith("ETF")
+                    }
+            except Exception as e:
+                print(f"Error fetching quote in parallel for {symbol}: {e}")
+            return symbol, None
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+            futures = [executor.submit(fetch_task, symbol, name) for symbol, name in stocks.items()]
+            for future in concurrent.futures.as_completed(futures):
+                symbol, res = future.result()
+                if res:
+                    data[symbol] = res
+                    
+        # 원래 monitored_stocks.json에 정의된 순서대로 정렬하여 반환
+        ordered_data = {}
+        for symbol in stocks.keys():
+            if symbol in data:
+                ordered_data[symbol] = data[symbol]
+                
+        _custom_snapshot_cache["ts"] = now
+        _custom_snapshot_cache["data"] = {k: dict(v) for k, v in ordered_data.items()}
+        return ordered_data
+
+
 if __name__ == "__main__":
     import json
     load_ath_from_history()
     snap = get_snapshot()
+    print("=== MAIN SNAPSHOT ===")
     print(json.dumps(snap, indent=2, ensure_ascii=False))
+    print("\n=== CUSTOM STOCKS SNAPSHOT ===")
+    custom_snap = get_custom_stocks_snapshot(use_cache=False)
+    print(json.dumps(custom_snap, indent=2, ensure_ascii=False))

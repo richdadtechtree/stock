@@ -4,7 +4,7 @@
 """
 from datetime import datetime
 
-from market_data import get_snapshot
+from market_data import get_snapshot, get_custom_stocks_snapshot
 from trigger_engine import TriggerEngine
 
 
@@ -61,8 +61,39 @@ def build_summary_text():
         crash = "동반 하락 중 (미국 배분 조건 충족)" if sp["us_crash"] else "동반 하락 아님"
         lines.append(f"• S&P500: 고점대비 {sp['drawdown']:.1f}% · {crash}")
 
+    # 관심 종목 및 ETF 현황 요약
+    custom_snap = get_custom_stocks_snapshot()
+    if custom_snap:
+        lines.append("")
+        lines.append("📊 *관심 종목 및 ETF (2% 알림)*")
+        engine = TriggerEngine()
+        custom_status = engine.get_custom_stocks_status(custom_snap)
+        for symbol, s in custom_status.items():
+            chg = s["change_rate"]
+            cur = s["current"]
+            is_us = not symbol.isdigit()
+            price = f"${cur:,.2f}" if is_us else f"{cur:,.0f}원"
+            arrow = "▲" if chg >= 0 else "▼"
+            
+            alert_info = ""
+            if s.get("is_step_alert"):
+                triggered_steps = s.get("triggered_steps", [])
+                if triggered_steps:
+                    steps_str = ",".join(f"{'+' if st['direction'] == 'RISE' else '-'}{st['val']:.0f}%" for st in triggered_steps)
+                    alert_info = f" (🔔돌파: {steps_str})"
+            else:
+                if s.get("triggered_rise"):
+                    alert_info = " (🚀급등)"
+                elif s.get("triggered_fall"):
+                    alert_info = " (📉급락)"
+            
+            lines.append(f"• {s['name']}: {price} {arrow}{chg:+.2f}%{alert_info}")
+
     return "\n".join(lines)
 
 
 if __name__ == "__main__":
+    import sys
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     print(build_summary_text())

@@ -47,6 +47,12 @@ def capture_dashboard(path=SCREENSHOT_PATH):
             except Exception:
                 print("[Warn] Alert status section did not load in time. Capturing anyway.")
 
+            # Wait for the custom stocks section (best-effort)
+            try:
+                page.wait_for_selector("#custom-stocks-container .alert-row", timeout=10000)
+            except Exception:
+                print("[Warn] Custom stocks section did not load in time.")
+
             # Sleep slightly to ensure CSS transitions/animations settle
             time.sleep(1.5)
 

@@ -30,7 +30,7 @@
             <!-- KOSPI Card (Skeleton/Default) -->
             <div class="index-card loading-skeleton" id="card-KOSPI">
                 <div class="card-header">
-                    <span class="card-title">KOSPI</span>
+                    <span class="card-title" style="display: flex; align-items: center; gap: 6px;">KOSPI <span id="sidecar-badge-KOSPI" style="display:none; font-size: 0.65rem; color: #fff; padding: 2px 6px; border-radius: 4px; font-weight: bold; border: 1px solid rgba(255,255,255,0.2); white-space: nowrap;">🚨 사이드카</span></span>
                     <span class="change-badge up" id="badge-KOSPI">+0.00%</span>
                 </div>
                 <div class="card-body">
@@ -42,7 +42,7 @@
                     <!-- Sparkline -->
                     <div class="sparkline-container up" id="sparkline-container-KOSPI">
                         <svg viewBox="0 0 300 50" width="100%" height="100%">
-                            <path class="sparkline-path" id="path-KOSPI" d="M 0 25 L 300 25" />
+                             <path class="sparkline-path" id="path-KOSPI" d="M 0 25 L 300 25" />
                         </svg>
                     </div>
                 </div>
@@ -51,7 +51,7 @@
             <!-- KOSDAQ Card (Skeleton/Default) -->
             <div class="index-card loading-skeleton" id="card-KOSDAQ">
                 <div class="card-header">
-                    <span class="card-title">KOSDAQ</span>
+                    <span class="card-title" style="display: flex; align-items: center; gap: 6px;">KOSDAQ <span id="sidecar-badge-KOSDAQ" style="display:none; font-size: 0.65rem; color: #fff; padding: 2px 6px; border-radius: 4px; font-weight: bold; border: 1px solid rgba(255,255,255,0.2); white-space: nowrap;">🚨 사이드카</span></span>
                     <span class="change-badge up" id="badge-KOSDAQ">+0.00%</span>
                 </div>
                 <div class="card-body">
@@ -117,6 +117,14 @@
             <div class="alert-title">🔔 투자 타이밍 현황</div>
             <div class="alert-grid" id="alert-container">
                 <div class="alert-placeholder">투자 타이밍 데이터를 불러오는 중...</div>
+            </div>
+        </div>
+
+        <!-- Monitored Custom Stocks & ETFs -->
+        <div class="alert-section" id="custom-stocks-section">
+            <div class="alert-title">📊 관심 종목 및 ETF 실시간 모니터링 (2% 단위 누적 및 10%+ 대폭등/대폭락 알림)</div>
+            <div class="alert-grid" id="custom-stocks-container">
+                <div class="alert-placeholder">관심 종목 데이터를 불러오는 중...</div>
             </div>
         </div>
 
@@ -216,12 +224,25 @@
                             const changeRate = indexData.change_rate;
                             const isUp = changeRate >= 0;
                             
-                            if (isUp) {
+                             if (isUp) {
                                 badge.innerText = `+${changeRate.toFixed(2)}%`;
                                 badge.className = 'change-badge up';
                             } else {
                                 badge.innerText = `${changeRate.toFixed(2)}%`;
                                 badge.className = 'change-badge down';
+                            }
+                            
+                            // Sidecar Badge
+                            const sidecarBadge = document.getElementById(`sidecar-badge-${m.id}`);
+                            if (sidecarBadge) {
+                                const limit = m.id === 'KOSPI' ? 5.0 : 6.0;
+                                if (Math.abs(changeRate) >= limit) {
+                                    sidecarBadge.style.display = 'inline-block';
+                                    sidecarBadge.innerText = `🚨 사이드카 ${isUp ? '매수' : '매도'}`;
+                                    sidecarBadge.style.backgroundColor = isUp ? 'var(--stock-up)' : 'var(--stock-down)';
+                                } else {
+                                    sidecarBadge.style.display = 'none';
+                                }
                             }
                             
                             // ATH price & drawdown
@@ -324,9 +345,82 @@
             }
         }
 
+        // Load custom stocks status from Backend API
+        async function fetchCustomStocks() {
+            try {
+                const response = await fetch('/api/custom-stocks');
+                const result = await response.json();
+                if (result.status !== 'success') return;
+
+                const data = result.data;
+                const container = document.getElementById('custom-stocks-container');
+                const rows = [];
+
+                for (const [symbol, s] of Object.entries(data)) {
+                    const isUp = s.change_rate >= 0;
+                    const changeRateClass = isUp ? 'up' : 'down';
+                    const changePrefix = isUp ? '+' : '';
+                    
+                    // Format currency based on symbol type (US vs Domestic)
+                    const isUS = !symbol.match(/^\d+$/);
+                    const formattedPrice = isUS 
+                        ? `$${s.current.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+                        : `${s.current.toLocaleString('ko-KR')}원`;
+
+                    let alertStatus = '';
+                    if (s.is_step_alert) {
+                        if (s.triggered_steps && s.triggered_steps.length > 0) {
+                            alertStatus = s.triggered_steps.map(step => {
+                                const isStepUp = step.direction === 'RISE';
+                                const color = isStepUp ? 'var(--stock-up)' : 'var(--stock-down)';
+                                const border = isStepUp ? 'rgba(255, 59, 92, 0.3)' : 'rgba(46, 124, 255, 0.3)';
+                                const emoji = isStepUp ? '🚀' : '📉';
+                                return `<span class="stage-chip" style="color: ${color}; font-weight: bold; border-color: ${border}; margin-left: 4px; padding: 2px 6px;">${emoji} ${isStepUp ? '+' : '-'}${step.val}%</span>`;
+                            }).join('');
+                        } else {
+                            alertStatus = `<span style="color: var(--text-secondary);">🔔 2% 단위 누적 알림 대기</span>`;
+                        }
+                    } else {
+                        alertStatus = `<span style="color: var(--text-secondary);">🔔 변동률 ${s.threshold}% 도달 시 알림 대기</span>`;
+                        if (s.triggered_rise) {
+                            const time = s.triggered_rise_at ? s.triggered_rise_at.split(' ')[1].substring(0, 5) : '';
+                            alertStatus = `<span class="stage-chip done" style="color: var(--stock-up); font-weight: bold; border-color: rgba(255, 59, 92, 0.3);">🚀 급등 알림 전송 (${time})</span>`;
+                        } else if (s.triggered_fall) {
+                            const time = s.triggered_fall_at ? s.triggered_fall_at.split(' ')[1].substring(0, 5) : '';
+                            alertStatus = `<span class="stage-chip crash" style="color: var(--stock-down); font-weight: bold; border-color: rgba(46, 124, 255, 0.3);">📉 급락 알림 전송 (${time})</span>`;
+                        }
+                    }
+
+                    rows.push(`
+                        <div class="alert-row">
+                            <div class="alert-symbol" style="line-height: 1.2;">
+                                ${s.name}
+                                <small style="color: var(--text-secondary); display: block; font-weight: normal; font-size: 0.72rem; margin-top: 2px;">${symbol}</small>
+                            </div>
+                            <div class="alert-dd ${changeRateClass}">${changePrefix}${s.change_rate.toFixed(2)}%</div>
+                            <div class="alert-stages" style="align-items: center; display: flex; flex-wrap: wrap; gap: 6px;">
+                                <span class="stage-chip" style="font-weight: 700; color: #fff;">${formattedPrice}</span>
+                                <span class="stage-chip">${s.is_etf ? 'ETF' : '일반주식'}</span>
+                                <span class="stage-chip" style="font-size: 0.7rem; color: var(--text-secondary);">${s.source}</span>
+                            </div>
+                            <div class="alert-next" style="display: flex; justify-content: flex-end; align-items: center;">${alertStatus}</div>
+                        </div>`);
+                }
+
+                if (rows.length > 0) {
+                    container.innerHTML = rows.join('');
+                } else {
+                    container.innerHTML = '<div class="alert-placeholder">모니터링 중인 관심 종목이 없습니다. (.env 파일에서 설정 가능)</div>';
+                }
+            } catch (error) {
+                console.error("Error loading custom stocks:", error);
+            }
+        }
+
         // Run once on load
         fetchIndices();
         fetchAlerts();
+        fetchCustomStocks();
     </script>
 </body>
 </html>

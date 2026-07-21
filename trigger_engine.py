@@ -241,6 +241,160 @@ class TriggerEngine:
             conn.close()
         return events
 
+    def check_sidecars(self, snapshot, now=None):
+        """
+        코스피 및 코스닥 지수의 당일 등락률을 평가해 사이드카 조건(코스피 ±5%, 코스닥 ±6%)을
+        돌파했는지 검사하여 이벤트를 반환합니다. 하루에 한 번씩만 알림이 전송됩니다.
+        """
+        now_dt = datetime.now()
+        date_str = now_dt.strftime("%Y-%m-%d")
+        now_str = now or now_dt.strftime("%Y-%m-%d %H:%M:%S")
+        
+        events = []
+        conn = self._connect()
+        try:
+            # 1. KOSPI 검사 (±5%)
+            if "KOSPI" in snapshot:
+                chg = snapshot["KOSPI"]["change_rate"]
+                current = snapshot["KOSPI"]["current"]
+                if chg >= 5.0:
+                    stage_key = f"SIDECAR_RISE_{date_str}"
+                    if not self._is_triggered(conn, "KOSPI", stage_key):
+                        self._mark(conn, "KOSPI", stage_key, now_str)
+                        events.append({
+                            "symbol": "KOSPI",
+                            "stage": stage_key,
+                            "message": (
+                                f"🚨 *[사이드카 발동 조건 돌파 - 코스피]*\n"
+                                f"코스피 선물 시장 변동성으로 인한 사이드카 발동 기준(±5.0%)을 돌파했습니다.\n"
+                                f"현재 코스피 등락률: *{chg:+.2f}%* (현재가: {current:,.2f})"
+                            )
+                        })
+                elif chg <= -5.0:
+                    stage_key = f"SIDECAR_FALL_{date_str}"
+                    if not self._is_triggered(conn, "KOSPI", stage_key):
+                        self._mark(conn, "KOSPI", stage_key, now_str)
+                        events.append({
+                            "symbol": "KOSPI",
+                            "stage": stage_key,
+                            "message": (
+                                f"🚨 *[사이드카 발동 조건 돌파 - 코스피]*\n"
+                                f"코스피 선물 시장 변동성으로 인한 사이드카 발동 기준(±5.0%)을 돌파했습니다.\n"
+                                f"현재 코스피 등락률: *{chg:+.2f}%* (현재가: {current:,.2f})"
+                            )
+                        })
+            
+            # 2. KOSDAQ 검사 (±6%)
+            if "KOSDAQ" in snapshot:
+                chg = snapshot["KOSDAQ"]["change_rate"]
+                current = snapshot["KOSDAQ"]["current"]
+                if chg >= 6.0:
+                    stage_key = f"SIDECAR_RISE_{date_str}"
+                    if not self._is_triggered(conn, "KOSDAQ", stage_key):
+                        self._mark(conn, "KOSDAQ", stage_key, now_str)
+                        events.append({
+                            "symbol": "KOSDAQ",
+                            "stage": stage_key,
+                            "message": (
+                                f"🚨 *[사이드카 발동 조건 돌파 - 코스닥]*\n"
+                                f"코스닥 선물 시장 변동성으로 인한 사이드카 발동 기준(±6.0%)을 돌파했습니다.\n"
+                                f"현재 코스닥 등락률: *{chg:+.2f}%* (현재가: {current:,.2f})"
+                            )
+                        })
+                elif chg <= -6.0:
+                    stage_key = f"SIDECAR_FALL_{date_str}"
+                    if not self._is_triggered(conn, "KOSDAQ", stage_key):
+                        self._mark(conn, "KOSDAQ", stage_key, now_str)
+                        events.append({
+                            "symbol": "KOSDAQ",
+                            "stage": stage_key,
+                            "message": (
+                                f"🚨 *[사이드카 발동 조건 돌파 - 코스닥]*\n"
+                                f"코스닥 선물 시장 변동성으로 인한 사이드카 발동 기준(±6.0%)을 돌파했습니다.\n"
+                                f"현재 코스닥 등락률: *{chg:+.2f}%* (현재가: {current:,.2f})"
+                            )
+                        })
+            conn.commit()
+        finally:
+            conn.close()
+        return events
+
+    def check_custom_stocks(self, custom_snapshot, now=None):
+        """
+        커스텀 관심 종목들의 당일 등락률을 평가해 알림 조건에 도달한 종목이 있으면 이벤트를 반환합니다.
+        모든 관심 종목 및 ETF에 대해 2% 단위(2%, 4%, 6%, 8%, 10%...) 누적 등락 알림을 전송합니다.
+        (10% 이상 등락 시 🚨 대폭등/대폭락으로 강조 전송)
+        """
+        if now:
+            try:
+                now_dt = datetime.strptime(now, "%Y-%m-%d %H:%M:%S")
+            except Exception:
+                now_dt = datetime.now()
+        else:
+            now_dt = datetime.now()
+        date_str = now_dt.strftime("%Y-%m-%d")
+        now_str = now or now_dt.strftime("%Y-%m-%d %H:%M:%S")
+
+        try:
+            step_unit = float(os.getenv("CUSTOM_ALERT_STEP", os.getenv("CUSTOM_ALERT_THRESHOLD", "2.0")))
+        except ValueError:
+            step_unit = 2.0
+
+        events = []
+        conn = self._connect()
+        try:
+            for symbol, data in custom_snapshot.items():
+                change_rate = data["change_rate"]
+                name = data["name"]
+                current = data["current"]
+                is_etf = data.get("is_etf", False)
+                type_str = "ETF" if is_etf else "종목"
+
+                # 1. 달성한 모든 2% 단위 단계 계산 (예: 2%, 4%, 6%, 8%, 10%...)
+                steps = []
+                if change_rate >= step_unit:
+                    curr = step_unit
+                    while curr <= change_rate:
+                        steps.append((round(curr, 1), "RISE"))
+                        curr += step_unit
+                elif change_rate <= -step_unit:
+                    curr = -step_unit
+                    while curr >= change_rate:
+                        steps.append((round(abs(curr), 1), "FALL"))
+                        curr -= step_unit
+
+                # 2. 각 단계에 대해 아직 트리거되지 않은 알림을 체크
+                for val, direction in steps:
+                    stage_key = f"{direction}_STEP_{val:.1f}_{date_str}"
+                    if not self._is_triggered(conn, symbol, stage_key):
+                        self._mark(conn, symbol, stage_key, now_str)
+
+                        is_major = val >= 10.0
+                        if direction == "RISE":
+                            dir_str = "🚨 대폭등" if is_major else "급등"
+                            dir_emoji = "🚀🚨" if is_major else "🚀"
+                            sign = "+"
+                        else:
+                            dir_str = "🚨 대폭락" if is_major else "급락"
+                            dir_emoji = "📉🚨" if is_major else "📉"
+                            sign = "-"
+
+                        formatted_price = f"${current:,.2f}" if not symbol.isdigit() else f"{current:,.0f}원"
+
+                        events.append({
+                            "symbol": symbol,
+                            "stage": stage_key,
+                            "message": (
+                                f"{dir_emoji} *[{name} ({symbol})] {type_str} {dir_str} 알림*\n"
+                                f"전일 대비 *{sign}{val:.0f}%* 돌파! (현재 등락률: {change_rate:+.2f}%)\n"
+                                f"현재가: {formatted_price}"
+                            )
+                        })
+            conn.commit()
+        finally:
+            conn.close()
+        return events
+
     # -------------------------------------------------------------- status
     def status(self, snapshot):
         """
@@ -331,6 +485,48 @@ class TriggerEngine:
         finally:
             conn.close()
 
+    def get_custom_stocks_status(self, custom_snapshot):
+        """
+        관심 종목들의 오늘 알람 트리거 상태를 반환합니다.
+        """
+        now_dt = datetime.now()
+        date_str = now_dt.strftime("%Y-%m-%d")
+        conn = self._connect()
+        out = {}
+        try:
+            for symbol, data in custom_snapshot.items():
+                triggered_steps = []
+                rows = conn.execute(
+                    "SELECT stage FROM trigger_state WHERE symbol=? AND (stage LIKE 'RISE_STEP_%' OR stage LIKE 'FALL_STEP_%') AND stage LIKE ?",
+                    (symbol, f"%_{date_str}")
+                ).fetchall()
+
+                for r in rows:
+                    stage = r[0]
+                    parts = stage.split("_")
+                    try:
+                        val = float(parts[2])
+                        direction = "RISE" if "RISE" in stage else "FALL"
+                        triggered_steps.append({"val": val, "direction": direction})
+                    except Exception:
+                        pass
+
+                triggered_steps.sort(key=lambda x: x["val"])
+
+                out[symbol] = {
+                    "name": data["name"],
+                    "current": data["current"],
+                    "change_rate": data["change_rate"],
+                    "is_etf": data["is_etf"],
+                    "source": data["source"],
+                    "is_step_alert": True,
+                    "triggered_steps": triggered_steps,
+                }
+            return out
+        finally:
+            conn.close()
+
+
 
 def format_events(events, now=None):
     """트리거 이벤트 목록을 하나의 텔레그램 메시지로 포맷."""
@@ -338,6 +534,24 @@ def format_events(events, now=None):
         return None
     now_str = now or datetime.now().strftime("%Y-%m-%d %H:%M")
     header = f"🔔 *투자 타이밍 알림* ({now_str})"
+    return header + "\n\n" + "\n\n".join(e["message"] for e in events)
+
+
+def format_sidecar_events(events, now=None):
+    """사이드카 발동 이벤트 목록을 하나의 텔레그램 메시지로 포맷."""
+    if not events:
+        return None
+    now_str = now or datetime.now().strftime("%Y-%m-%d %H:%M")
+    header = f"🚨 *시장 변동성 경보 (사이드카)* ({now_str})"
+    return header + "\n\n" + "\n\n".join(e["message"] for e in events)
+
+
+def format_custom_events(events, now=None):
+    """관심 종목 변동 이벤트 목록을 하나의 텔레그램 메시지로 포맷."""
+    if not events:
+        return None
+    now_str = now or datetime.now().strftime("%Y-%m-%d %H:%M")
+    header = f"📢 *관심 종목 변동 알림* ({now_str})"
     return header + "\n\n" + "\n\n".join(e["message"] for e in events)
 
 

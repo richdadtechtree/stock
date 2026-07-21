@@ -9,8 +9,8 @@ from dotenv import load_dotenv
 from apscheduler.schedulers.blocking import BlockingScheduler
 
 from capture import capture_and_send
-from market_data import get_snapshot, load_ath_from_history
-from trigger_engine import TriggerEngine, format_events
+from market_data import get_snapshot, load_ath_from_history, get_custom_stocks_snapshot
+from trigger_engine import TriggerEngine, format_events, format_custom_events, format_sidecar_events
 from notifier import send_telegram_message
 
 load_dotenv()
@@ -42,25 +42,53 @@ def daily_job():
 
 def alert_job():
     """
-    투자 타이밍 트리거 체크 — 새로 도달한 하락 단계가 있으면 텔레그램 알람 전송.
+    지수 투자 타이밍 트리거 및 관심 종목/ETF 급등락 알림을 체크합니다.
     """
-    print(f"[{datetime.now()}] Checking investment timing triggers...")
+    print(f"[{datetime.now()}] Checking triggers and custom stocks/ETFs...")
+    engine = TriggerEngine()
+    
+    # 1. 지수 투자 타이밍 트리거 체크
     try:
         snapshot = get_snapshot()
-        if not snapshot:
-            print("[Warn] Empty market snapshot. Skipping trigger check.")
-            return
-        engine = TriggerEngine()
-        events = engine.check(snapshot)
-        if events:
-            message = format_events(events)
-            sent = send_telegram_message(message)
-            print(f"[{datetime.now()}] {len(events)} trigger(s) fired. "
-                  f"Telegram: {'SENT' if sent else 'FAILED'}")
+        if snapshot:
+            # 1.1 투자 타이밍 트리거 체크
+            events = engine.check(snapshot)
+            if events:
+                message = format_events(events)
+                sent = send_telegram_message(message)
+                print(f"[{datetime.now()}] {len(events)} index trigger(s) fired. Telegram: {'SENT' if sent else 'FAILED'}")
+            else:
+                print(f"[{datetime.now()}] No new index triggers.")
+                
+            # 1.2 사이드카 발동 여부 체크
+            try:
+                sidecar_events = engine.check_sidecars(snapshot)
+                if sidecar_events:
+                    sidecar_message = format_sidecar_events(sidecar_events)
+                    sent = send_telegram_message(sidecar_message)
+                    print(f"[{datetime.now()}] {len(sidecar_events)} sidecar trigger(s) fired. Telegram: {'SENT' if sent else 'FAILED'}")
+            except Exception as se:
+                print(f"[Error] Sidecar check failed: {se}")
         else:
-            print(f"[{datetime.now()}] No new triggers.")
+            print("[Warn] Empty market snapshot. Skipping index trigger check.")
     except Exception as e:
-        print(f"[Error] alert_job failed: {e}")
+        print(f"[Error] Index alert check failed: {e}")
+        
+    # 2. 관심 종목 및 ETF 급등락 알림 체크
+    try:
+        custom_snapshot = get_custom_stocks_snapshot()
+        if custom_snapshot:
+            custom_events = engine.check_custom_stocks(custom_snapshot)
+            if custom_events:
+                custom_message = format_custom_events(custom_events)
+                sent = send_telegram_message(custom_message)
+                print(f"[{datetime.now()}] {len(custom_events)} custom stock trigger(s) fired. Telegram: {'SENT' if sent else 'FAILED'}")
+            else:
+                print(f"[{datetime.now()}] No new custom stock/ETF triggers.")
+        else:
+            print("[Info] No custom stocks configured or empty snapshot.")
+    except Exception as e:
+        print(f"[Error] Custom stocks alert check failed: {e}")
 
 
 def main():
