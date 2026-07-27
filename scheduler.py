@@ -30,8 +30,9 @@ HOST = os.getenv("HOST", "127.0.0.1")
 # 투자 타이밍 트리거 체크 주기 (분)
 ALERT_CHECK_INTERVAL_MIN = int(os.getenv("ALERT_CHECK_INTERVAL_MIN", "10"))
 
-# 매일 브리핑 시간 (한국시간 KST). .env의 BRIEFING_TIME="HH:MM" 으로 변경 가능. 기본 15:30.
-BRIEFING_TIME = os.getenv("BRIEFING_TIME", "15:30").strip()
+# 매일 브리핑 시간 (한국시간 KST). .env의 BRIEFING_TIME="HH:MM" 으로 변경 가능.
+# 기본 15:40 — 코스피·코스닥 종가(15:30 확정)가 완전히 반영된 뒤라 정확한 마감값을 캡처.
+BRIEFING_TIME = os.getenv("BRIEFING_TIME", "15:40").strip()
 try:
     BRIEFING_HOUR, BRIEFING_MIN = (int(x) for x in BRIEFING_TIME.split(":"))
 except ValueError:
