@@ -30,6 +30,14 @@ HOST = os.getenv("HOST", "127.0.0.1")
 # 투자 타이밍 트리거 체크 주기 (분)
 ALERT_CHECK_INTERVAL_MIN = int(os.getenv("ALERT_CHECK_INTERVAL_MIN", "10"))
 
+# 매일 브리핑 시간 (한국시간 KST). .env의 BRIEFING_TIME="HH:MM" 으로 변경 가능. 기본 15:30.
+BRIEFING_TIME = os.getenv("BRIEFING_TIME", "15:30").strip()
+try:
+    BRIEFING_HOUR, BRIEFING_MIN = (int(x) for x in BRIEFING_TIME.split(":"))
+except ValueError:
+    print(f"[Warn] BRIEFING_TIME 형식 오류('{BRIEFING_TIME}') → 기본값 15:30 사용")
+    BRIEFING_HOUR, BRIEFING_MIN = 15, 30
+
 
 def run_server():
     """
@@ -152,15 +160,15 @@ def main():
     # (이걸 안 하면 15:30이 서버 UTC 15:30 = 한국 00:30에 실행되는 문제 발생)
     scheduler = BlockingScheduler(timezone="Asia/Seoul")
 
-    # Schedule job: Monday to Friday at 15:30 — 마감 브리핑 캡처 전송
+    # Schedule job: Monday to Friday at BRIEFING_TIME (KST) — 마감 브리핑 캡처 전송
     scheduler.add_job(
         daily_job,
         'cron',
         day_of_week='mon-fri',
-        hour=15,
-        minute=30,
+        hour=BRIEFING_HOUR,
+        minute=BRIEFING_MIN,
         id='daily_briefing',
-        name='Daily Stock Market Briefing at 15:30'
+        name=f'Daily Stock Market Briefing at {BRIEFING_HOUR:02d}:{BRIEFING_MIN:02d}'
     )
 
     # Schedule job: 투자 타이밍 트리거 체크 (미장 시간대 포함 24시간 주기 체크)
@@ -174,7 +182,7 @@ def main():
 
     print("--------------------------------------------------")
     print("Stock Briefing Scheduler is now running.")
-    print("Schedule: Mon-Fri at 15:30 KST (briefing capture)")
+    print(f"Schedule: Mon-Fri at {BRIEFING_HOUR:02d}:{BRIEFING_MIN:02d} KST (briefing capture)")
     print(f"Schedule: every {ALERT_CHECK_INTERVAL_MIN} min (investment timing alerts)")
     print("Press Ctrl+C to exit.")
     print("--------------------------------------------------")
