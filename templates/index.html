@@ -111,6 +111,27 @@
                 </div>
             </div>
 
+            <!-- QLD Card (Skeleton/Default) -->
+            <div class="index-card loading-skeleton" id="card-QLD">
+                <div class="card-header">
+                    <span class="card-title">QLD <small class="card-subtitle">2x 나스닥</small></span>
+                    <span class="change-badge up" id="badge-QLD">+0.00%</span>
+                </div>
+                <div class="card-body">
+                    <div class="current-price" id="price-QLD">$0.00</div>
+                    <div class="ath-row">
+                        <span>역대 최고가 (<span id="ath-val-QLD">$0.00</span>)</span>
+                        <span class="ath-drawdown down" id="ath-QLD">-0.00%</span>
+                    </div>
+                    <!-- Sparkline -->
+                    <div class="sparkline-container up" id="sparkline-container-QLD">
+                        <svg viewBox="0 0 300 50" width="100%" height="100%">
+                            <path class="sparkline-path" id="path-QLD" d="M 0 25 L 300 25" />
+                        </svg>
+                    </div>
+                </div>
+            </div>
+
             <!-- TQQQ Card (Skeleton/Default) -->
             <div class="index-card loading-skeleton" id="card-TQQQ">
                 <div class="card-header">
@@ -228,6 +249,7 @@
                         { key: 'KOSDAQ', id: 'KOSDAQ', pathId: 'path-KOSDAQ', containerId: 'sparkline-container-KOSDAQ' },
                         { key: 'S&P 500', id: 'SP500', pathId: 'path-SP500', containerId: 'sparkline-container-SP500' },
                         { key: 'NASDAQ', id: 'NASDAQ', pathId: 'path-NASDAQ', containerId: 'sparkline-container-NASDAQ' },
+                        { key: 'QLD', id: 'QLD', pathId: 'path-QLD', containerId: 'sparkline-container-QLD', currency: '$' },
                         { key: 'TQQQ', id: 'TQQQ', pathId: 'path-TQQQ', containerId: 'sparkline-container-TQQQ', currency: '$' }
                     ];
                     
