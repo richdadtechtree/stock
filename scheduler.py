@@ -22,6 +22,12 @@ HOST = os.getenv("HOST", "127.0.0.1")
 # 투자 타이밍 트리거 체크 주기 (분)
 ALERT_CHECK_INTERVAL_MIN = int(os.getenv("ALERT_CHECK_INTERVAL_MIN", "10"))
 
+# 카드뉴스(월스트리트 나우 스타일) 자동 브리핑 설정
+# ENABLE_CARD_BRIEFING=1 이면 매일 정해진 시각(기본 평일 06:40 KST, 미장 마감 뒤)에 전송
+ENABLE_CARD_BRIEFING = os.getenv("ENABLE_CARD_BRIEFING", "0") not in ("0", "false", "False", "")
+CARD_BRIEFING_HOUR = int(os.getenv("CARD_BRIEFING_HOUR", "6"))
+CARD_BRIEFING_MINUTE = int(os.getenv("CARD_BRIEFING_MINUTE", "40"))
+
 
 def run_server():
     """
@@ -38,6 +44,19 @@ def daily_job():
     print(f"[{datetime.now()}] Starting scheduled daily briefing capture...")
     success = capture_and_send()
     print(f"[{datetime.now()}] Scheduled job completed. Status: {'SUCCESS' if success else 'FAILED'}")
+
+
+def card_briefing_job():
+    """
+    카드뉴스(월스트리트 나우 스타일) 브리핑을 만들어 텔레그램으로 전송.
+    """
+    print(f"[{datetime.now()}] Starting card-news briefing generation...")
+    try:
+        from briefing_generator import build_card_briefing
+        ok = build_card_briefing(send=True)
+        print(f"[{datetime.now()}] Card briefing done. Status: {'SUCCESS' if ok else 'FAILED'}")
+    except Exception as e:
+        print(f"[Error] Card briefing failed: {e}")
 
 
 def alert_job():
@@ -99,7 +118,16 @@ def main():
                         help="Run the investment timing trigger check immediately and exit")
     parser.add_argument("--summary", action="store_true",
                         help="Print the current market & timing summary text and exit")
+    parser.add_argument("--card-briefing", action="store_true",
+                        help="Build the card-news style briefing now and send it, then exit")
     args = parser.parse_args()
+
+    if args.card_briefing:
+        print("--- Running Card Briefing Mode ---")
+        from briefing_generator import build_card_briefing
+        ok = build_card_briefing(send=True)
+        print(f"Card briefing completed. Status: {'SUCCESS' if ok else 'FAILED'}")
+        sys.exit(0 if ok else 1)
 
     if args.summary:
         from summary import build_summary_text
@@ -146,6 +174,18 @@ def main():
         name='Daily Stock Market Briefing at 15:30'
     )
 
+    # Schedule job: 카드뉴스 브리핑 (선택) — 평일 정해진 시각에 전송
+    if ENABLE_CARD_BRIEFING:
+        scheduler.add_job(
+            card_briefing_job,
+            'cron',
+            day_of_week='mon-fri',
+            hour=CARD_BRIEFING_HOUR,
+            minute=CARD_BRIEFING_MINUTE,
+            id='card_briefing',
+            name=f'Card-News Briefing at {CARD_BRIEFING_HOUR:02d}:{CARD_BRIEFING_MINUTE:02d}',
+        )
+
     # Schedule job: 투자 타이밍 트리거 체크 (미장 시간대 포함 24시간 주기 체크)
     scheduler.add_job(
         alert_job,
@@ -159,6 +199,8 @@ def main():
     print("Stock Briefing Scheduler is now running.")
     print("Schedule: Mon-Fri at 15:30 KST (briefing capture)")
     print(f"Schedule: every {ALERT_CHECK_INTERVAL_MIN} min (investment timing alerts)")
+    if ENABLE_CARD_BRIEFING:
+        print(f"Schedule: Mon-Fri at {CARD_BRIEFING_HOUR:02d}:{CARD_BRIEFING_MINUTE:02d} KST (card-news AI briefing)")
     print("Press Ctrl+C to exit.")
     print("--------------------------------------------------")
 

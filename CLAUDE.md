@@ -29,6 +29,8 @@
 | `capture.py` | 웹 화면을 사진으로 찍기 |
 | `scheduler.py` | 정해진 시간·주기에 위 작업들을 실행하는 알람시계 |
 | `backtest.py` | 과거 데이터로 "그때였다면 알람이 언제 울렸을까" 연습 |
+| `briefing_generator.py` | AI(Claude)가 그날 뉴스를 웹으로 조사해 '월스트리트 나우' 스타일 카드뉴스 내용을 만듦 |
+| `card_renderer.py` | 그 내용을 사진 같은 카드뉴스 HTML 로 그림 (PNG 캡처 → 텔레그램 전송) |
 | `templates/index.html`, `static/style.css` | 웹 화면 디자인 |
 
 ## 알람 규칙 (돈이 걸린 부분 — 함부로 바꾸지 말 것)
@@ -71,6 +73,9 @@ python scheduler.py
 
 # 과거 하락장으로 연습해 보기
 python backtest.py --start 2021-11-01 --end 2023-01-01
+
+# '월스트리트 나우' 스타일 카드뉴스 브리핑 지금 바로 만들어 전송 (Claude API 키 필요)
+python scheduler.py --card-briefing
 ```
 
 ## 설정값 (.env 파일)
@@ -79,6 +84,9 @@ python backtest.py --start 2021-11-01 --end 2023-01-01
 - `KIS_APP_KEY`, `KIS_APP_SECRET`, `KIS_ACCOUNT_NO`, `KIS_CANV_MODE` : 한국투자증권 API 설정
 - `ALERT_CHECK_INTERVAL_MIN` : 알람 검사 주기(분), 기본 10분
 - `CHROMIUM_PATH` : (선택) 크롬 실행 파일 경로 직접 지정. 미설정 시 Playwright 기본값 사용
+- `ANTHROPIC_API_KEY` : **카드뉴스 AI 브리핑용** Claude API 키 (또는 서버에서 `ant auth login` 프로필). 없으면 `--card-briefing` 은 못 돕니다.
+  - `BRIEFING_MODEL`(기본 claude-opus-5), `BRIEFING_WEB_SEARCH`(1=그날 뉴스 웹조사, 기본 켬)
+  - `ENABLE_CARD_BRIEFING`(1이면 평일 자동 전송), `CARD_BRIEFING_HOUR`/`CARD_BRIEFING_MINUTE`(기본 06:40 KST, 미장 마감 뒤)
 
 ## 규칙 / 주의
 

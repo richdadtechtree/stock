@@ -69,6 +69,44 @@ def capture_dashboard(path=SCREENSHOT_PATH):
                 browser.close()
 
 
+CARD_HTML_PATH = "static/card_briefing.html"
+CARD_SCREENSHOT_PATH = "static/card_briefing.png"
+
+
+def capture_html_file(html_path, out_path=CARD_SCREENSHOT_PATH, selector=".page"):
+    """
+    로컬 HTML 파일(html_path)을 열어 selector 요소를 PNG(out_path)로 저장. 성공 시 True.
+    (실행 중인 웹 서버가 필요 없음 — 파일을 직접 엽니다.)
+    """
+    abs_path = os.path.abspath(html_path)
+    url = f"file://{abs_path}"
+    print(f"Rendering card HTML from: {url}")
+
+    with sync_playwright() as p:
+        browser = None
+        try:
+            launch_kwargs = {"headless": True}
+            if CHROMIUM_PATH:
+                launch_kwargs["executable_path"] = CHROMIUM_PATH
+            browser = p.chromium.launch(**launch_kwargs)
+            page = browser.new_page(device_scale_factor=2)
+            page.set_viewport_size({"width": 1040, "height": 1400})
+            page.goto(url)
+            page.wait_for_selector(selector, timeout=10000)
+            time.sleep(0.8)
+
+            os.makedirs(os.path.dirname(out_path), exist_ok=True)
+            page.locator(selector).screenshot(path=out_path)
+            print(f"Card screenshot saved to {out_path}")
+            return True
+        except Exception as e:
+            print(f"[Error] Card HTML screenshot failed: {e}")
+            return False
+        finally:
+            if browser:
+                browser.close()
+
+
 def capture_and_send():
     """
     대시보드를 캡처해서 텔레그램(브리핑 봇)으로 전송. 성공 시 True.

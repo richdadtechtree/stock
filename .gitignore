@@ -9,6 +9,8 @@ alert_state.db
 
 # Screenshots
 static/briefing_screenshot.png
+static/card_briefing.png
+static/card_briefing.html
 
 # Python cache
 __pycache__/
