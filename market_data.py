@@ -228,8 +228,8 @@ def get_snapshot(include_sparkline=False, use_cache=True):
                         print(f"yfinance quote error for {name}: {e}")
                         quote = None
                         
-                # 3. 해외 주식(S&P 500, NASDAQ, TQQQ) 중 한투/야후 모두 실패 시 실시간성이 있는 네이버 금융 폴백
-                if not quote and name in ["S&P 500", "NASDAQ", "TQQQ"]:
+                # 3. 한투/야후 모두 실패 시 실시간/종가 수집이 가능한 네이버 금융 폴백
+                if not quote:
                     quote = _fetch_naver_quote(name)
                     source = "Naver Finance"
                         
@@ -254,9 +254,24 @@ def get_snapshot(include_sparkline=False, use_cache=True):
             _snapshot_cache["data"] = {k: dict(v) for k, v in data.items()}
 
         if include_sparkline:
-            if not (use_cache and _sparkline_cache["data"] and now - _sparkline_cache["ts"] < SPARKLINE_TTL):
-                _sparkline_cache["data"] = _fetch_sparklines()
-                _sparkline_cache["ts"] = now
+            # If cache is missing or expired, run update in a background thread to prevent blocking
+            if not _sparkline_cache["data"] or now - _sparkline_cache["ts"] >= SPARKLINE_TTL:
+                def update_sparklines_async():
+                    try:
+                        res = _fetch_sparklines()
+                        with _lock:
+                            _sparkline_cache["data"] = res
+                            _sparkline_cache["ts"] = time.time()
+                    except Exception as e:
+                        print(f"Error in async sparkline update: {e}")
+                
+                # If cache is completely empty, initialize it to empty lists for all symbols
+                if not _sparkline_cache["data"]:
+                    _sparkline_cache["data"] = {k: [] for k in SYMBOLS}
+                
+                # Start background thread
+                threading.Thread(target=update_sparklines_async, daemon=True).start()
+                
             for name in data:
                 data[name]["sparkline"] = _sparkline_cache["data"].get(name, [])
 
