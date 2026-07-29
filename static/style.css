@@ -255,16 +255,21 @@ body {
 }
 
 .ath-drawdown {
-    font-weight: 700;
-    font-size: 0.85rem;
+    font-weight: 800;
+    font-size: 1.0rem;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-family: 'Outfit', sans-serif;
 }
 
 .ath-drawdown.up {
     color: var(--stock-up);
+    background-color: var(--stock-up-bg);
 }
 
 .ath-drawdown.down {
     color: var(--stock-down);
+    background-color: var(--stock-down-bg);
 }
 
 /* Sparkline Trend Chart */
