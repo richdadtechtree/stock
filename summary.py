@@ -19,8 +19,8 @@ def build_summary_text():
     lines = [f"📊 *시장 브리핑* ({now})", ""]
 
     # 지수/종목 현재가 요약
-    label = {"KOSPI": "코스피", "KOSDAQ": "코스닥", "S&P 500": "S&P500", "TQQQ": "TQQQ"}
-    for key in ("KOSPI", "KOSDAQ", "S&P 500", "TQQQ"):
+    label = {"KOSPI": "코스피", "KOSDAQ": "코스닥", "S&P 500": "S&P500", "NASDAQ": "나스닥", "TQQQ": "TQQQ"}
+    for key in ("KOSPI", "KOSDAQ", "S&P 500", "NASDAQ", "TQQQ"):
         d = snapshot.get(key)
         if not d:
             continue
@@ -29,7 +29,7 @@ def build_summary_text():
         dd = d["ath_change_rate"]
         price = f"${cur:,.2f}" if key == "TQQQ" else f"{cur:,.2f}"
         arrow = "▲" if chg >= 0 else "▼"
-        lines.append(f"• {label[key]}: {price}  {arrow}{chg:+.2f}% (고점대비 {dd:.1f}%)")
+        lines.append(f"• *{label[key]}*: {price} | 전일 {arrow}{chg:+.2f}% (고점대비 *{dd:.1f}%*)")
 
     # 투자 타이밍 요약
     lines.append("")

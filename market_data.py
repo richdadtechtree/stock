@@ -25,10 +25,11 @@ YF_SESSION.headers.update({
 # kis_type: 'domestic' (국내지수), 'overseas' (해외주식), None (yfinance 전용)
 # S&P 500의 경우 yfinance 차단을 우회하기 위해 KIS 해외주식 API로 SPY ETF를 조회한 뒤 10배를 곱해 지수로 환산합니다.
 SYMBOLS = {
-    "KOSPI":   {"yf": "^KS11", "kis_type": "domestic", "kis_code": "0001", "default_ath": 9385.59},
-    "KOSDAQ":  {"yf": "^KQ11", "kis_type": "domestic", "kis_code": "1001", "default_ath": 1229.42},
-    "S&P 500": {"yf": "^GSPC", "kis_type": "overseas", "kis_code": ("AMS", "SPY"), "default_ath": 7620.90},
-    "TQQQ":    {"yf": "TQQQ",  "kis_type": "overseas", "kis_code": ("NAS", "TQQQ"), "default_ath": 87.89},
+    "KOSPI":   {"yf": "^KS11", "kis_type": "domestic", "kis_code": "0001", "default_ath": 3316.08, "max_valid_ath": 3500.0},
+    "KOSDAQ":  {"yf": "^KQ11", "kis_type": "domestic", "kis_code": "1001", "default_ath": 1062.03, "max_valid_ath": 1200.0},
+    "S&P 500": {"yf": "^GSPC", "kis_type": "overseas", "kis_code": ("AMS", "SPY"), "default_ath": 7620.90, "max_valid_ath": 8500.0},
+    "NASDAQ":  {"yf": "^IXIC", "kis_type": "overseas", "kis_code": ("NAS", "QQQ"), "default_ath": 27190.21, "max_valid_ath": 30000.0},
+    "TQQQ":    {"yf": "TQQQ",  "kis_type": "overseas", "kis_code": ("NAS", "TQQQ"), "default_ath": 88.09, "max_valid_ath": 100.0},
 }
 
 
@@ -66,6 +67,7 @@ def load_ath_from_history():
     """
     yfinance 전체 기간 데이터로 각 심볼의 역대 최고가(ATH)를 계산해 캐시를 갱신.
     프로세스 시작 시 백그라운드에서 1회 호출 권장.
+    비정상적인 아웃라이어(데어터 오류 데드크로스/스파이크)는 상한선(max_valid_ath)으로 차단.
     """
     print("Loading historical ATH values...")
     for name, info in SYMBOLS.items():
@@ -73,6 +75,10 @@ def load_ath_from_history():
             hist = yf.Ticker(info["yf"], session=YF_SESSION).history(period="max")
             if not hist.empty:
                 max_val = float(hist["High"].max())
+                max_limit = info.get("max_valid_ath", 999999.0)
+                if max_val > max_limit:
+                    print(f"[ATH] Ignored glitchy high value {max_val} for {name} (Limit: {max_limit})")
+                    continue
                 if max_val > ATH_CACHE.get(name, 0):
                     ATH_CACHE[name] = round(max_val, 2)
                     print(f"[ATH] {name}: {ATH_CACHE[name]}")
@@ -133,23 +139,35 @@ def _fetch_naver_quote(name):
         "KOSPI": "KOSPI",
         "KOSDAQ": "KOSDAQ",
         "S&P 500": "SPY",
+        "NASDAQ": ".IXIC",
         "TQQQ": "TQQQ.O"
     }
     code = naver_codes.get(name)
     if not code:
         return None
     try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
         if name in ["KOSPI", "KOSDAQ"]:
             url = f"https://m.stock.naver.com/api/index/{code}/basic"
-            res = requests.get(url, headers=YF_SESSION.headers, timeout=5)
+            res = requests.get(url, headers=headers, timeout=5)
             if res.status_code == 200:
                 data = res.json()
                 current = float(data.get("closePrice").replace(",", ""))
                 change_rate = float(data.get("compareToPreviousCloseRate", 0))
                 return {"current": current, "change_rate": change_rate}
+        elif name == "NASDAQ":
+            url = f"https://api.stock.naver.com/index/{code}/basic"
+            res = requests.get(url, headers=headers, timeout=5)
+            if res.status_code == 200:
+                data = res.json()
+                current = float(data.get("closePrice").replace(",", ""))
+                change_rate = float(data.get("fluctuationsRatio", 0))
+                return {"current": current, "change_rate": change_rate}
         else:
             url = f"https://api.stock.naver.com/stock/{code}/basic"
-            res = requests.get(url, headers=YF_SESSION.headers, timeout=5)
+            res = requests.get(url, headers=headers, timeout=5)
             if res.status_code == 200:
                 data = res.json()
                 current = float(data.get("closePrice").replace(",", ""))
@@ -196,17 +214,12 @@ def get_snapshot(include_sparkline=False, use_cache=True):
                 quote = None
                 source = "None"
                 
-                # 해외 주식(S&P 500, TQQQ)은 실시간성이 더 우수한 네이버 금융을 우선 시도
-                if name in ["S&P 500", "TQQQ"]:
-                    quote = _fetch_naver_quote(name)
-                    source = "Naver Finance"
-                    
-                # 네이버 금융이 실패했거나 국내 지수인 경우 한투 API 시도
-                if not quote and SYMBOLS[name]["kis_type"]:
+                # 1. 한국투자증권(KIS) API 우선 시도 (가장 공식적이며 정확한 전일대비 반영)
+                if SYMBOLS[name]["kis_type"]:
                     quote = _fetch_kis_quote(name)
                     source = "Korea Investment API"
                     
-                # 둘 다 실패 시 yfinance 시도
+                # 2. 한투 API가 실패했거나 설정되지 않은 경우 Yahoo Finance 시도
                 if not quote:
                     try:
                         quote = _fetch_yf_quote(name)
@@ -215,12 +228,20 @@ def get_snapshot(include_sparkline=False, use_cache=True):
                         print(f"yfinance quote error for {name}: {e}")
                         quote = None
                         
+                # 3. 해외 주식(S&P 500, NASDAQ, TQQQ) 중 한투/야후 모두 실패 시 실시간성이 있는 네이버 금융 폴백
+                if not quote and name in ["S&P 500", "NASDAQ", "TQQQ"]:
+                    quote = _fetch_naver_quote(name)
+                    source = "Naver Finance"
+                        
                 if not quote:
                     continue
                 current = quote["current"]
                 # S&P 500은 KIS나 Naver에서 SPY ETF로 가져왔으므로 지수 스케일(10.05배)로 환산
                 if name == "S&P 500" and (source.startswith("Korea") or source.startswith("Naver")):
                     current = current * 10.05
+                # NASDAQ은 KIS에서 QQQ ETF로 가져왔으므로 지수 스케일(36.75배)로 환산
+                if name == "NASDAQ" and source.startswith("Korea"):
+                    current = current * 36.75
                 ath, ath_change_rate = get_ath_and_drawdown(name, current)
                 data[name] = {
                     "current": round(current, 2),
