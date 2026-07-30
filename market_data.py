@@ -27,8 +27,9 @@ YF_SESSION.headers.update({
 SYMBOLS = {
     "KOSPI":   {"yf": "^KS11", "kis_type": "domestic", "kis_code": "0001", "default_ath": 3316.08, "max_valid_ath": 3500.0},
     "KOSDAQ":  {"yf": "^KQ11", "kis_type": "domestic", "kis_code": "1001", "default_ath": 1062.03, "max_valid_ath": 1200.0},
-    "S&P 500": {"yf": "^GSPC", "kis_type": "overseas", "kis_code": ("AMS", "SPY"), "default_ath": 7620.90, "max_valid_ath": 8500.0},
-    "NASDAQ":  {"yf": "^IXIC", "kis_type": "overseas", "kis_code": ("NAS", "QQQ"), "default_ath": 27190.21, "max_valid_ath": 30000.0},
+    # S&P500/NASDAQ은 ETF×배수 계산 대신 네이버 금융의 '실제 지수 값'을 직접 사용한다.
+    "S&P 500": {"yf": "^GSPC", "kis_type": "overseas", "kis_code": ("AMS", "SPY"), "default_ath": 7620.90, "max_valid_ath": 8500.0, "source_order": ["naver", "yf"]},
+    "NASDAQ":  {"yf": "^IXIC", "kis_type": "overseas", "kis_code": ("NAS", "QQQ"), "default_ath": 27190.21, "max_valid_ath": 30000.0, "source_order": ["naver", "yf"]},
     "QLD":     {"yf": "QLD",   "kis_type": "overseas", "kis_code": ("NAS", "QLD"),  "default_ath": 105.00, "max_valid_ath": 120.0},
     "TQQQ":    {"yf": "TQQQ",  "kis_type": "overseas", "kis_code": ("NAS", "TQQQ"), "default_ath": 88.09, "max_valid_ath": 100.0},
 }
@@ -215,35 +216,35 @@ def get_snapshot(include_sparkline=False, use_cache=True):
             for name in SYMBOLS:
                 quote = None
                 source = "None"
-                
-                # 1. 한국투자증권(KIS) API 우선 시도 (가장 공식적이며 정확한 전일대비 반영)
-                if SYMBOLS[name]["kis_type"]:
-                    quote = _fetch_kis_quote(name)
-                    source = "Korea Investment API"
-                    
-                # 2. 한투 API가 실패했거나 설정되지 않은 경우 Yahoo Finance 시도
-                if not quote:
-                    try:
-                        quote = _fetch_yf_quote(name)
-                        source = "Yahoo Finance"
-                    except Exception as e:
-                        print(f"yfinance quote error for {name}: {e}")
-                        quote = None
-                        
-                # 3. 한투/야후 모두 실패 시 실시간/종가 수집이 가능한 네이버 금융 폴백
-                if not quote:
-                    quote = _fetch_naver_quote(name)
-                    source = "Naver Finance"
-                        
+
+                # 심볼별 소스 우선순위. 지정 없으면 KIS→야후→네이버.
+                # S&P500/NASDAQ은 실제 지수 값을 위해 네이버(지수) 우선으로 지정돼 있다.
+                order = SYMBOLS[name].get("source_order", ["kis", "yf", "naver"])
+                for src in order:
+                    if src == "kis" and SYMBOLS[name]["kis_type"]:
+                        quote = _fetch_kis_quote(name)
+                        if quote:
+                            source = "Korea Investment API"
+                            break
+                    elif src == "yf":
+                        try:
+                            quote = _fetch_yf_quote(name)
+                        except Exception as e:
+                            print(f"yfinance quote error for {name}: {e}")
+                            quote = None
+                        if quote:
+                            source = "Yahoo Finance"
+                            break
+                    elif src == "naver":
+                        quote = _fetch_naver_quote(name)
+                        if quote:
+                            source = "Naver Finance"
+                            break
+
                 if not quote:
                     continue
+                # 실제 지수/시세 값을 그대로 사용한다 (ETF×배수 계산 없음).
                 current = quote["current"]
-                # S&P 500은 KIS에서 SPY ETF로 가져왔으므로 지수 스케일(10.03배)로 환산
-                if name == "S&P 500" and source.startswith("Korea"):
-                    current = current * 10.03
-                # NASDAQ은 KIS에서 QQQ ETF로 가져왔으므로 지수 스케일(36.93배)로 환산
-                if name == "NASDAQ" and source.startswith("Korea"):
-                    current = current * 36.93
                 ath, ath_change_rate = get_ath_and_drawdown(name, current)
                 data[name] = {
                     "current": round(current, 2),
