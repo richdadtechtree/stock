@@ -462,3 +462,8 @@ body {
         text-align: left;
     }
 }
+
+/* Hide custom stocks from the dashboard image */
+#custom-stocks-section {
+    display: none;
+}

@@ -139,7 +139,7 @@ def _fetch_naver_quote(name):
     naver_codes = {
         "KOSPI": "KOSPI",
         "KOSDAQ": "KOSDAQ",
-        "S&P 500": "SPY",
+        "S&P 500": ".INX",
         "NASDAQ": ".IXIC",
         "QLD": "QLD",
         "TQQQ": "TQQQ.O"
@@ -159,7 +159,7 @@ def _fetch_naver_quote(name):
                 current = float(data.get("closePrice").replace(",", ""))
                 change_rate = float(data.get("compareToPreviousCloseRate", 0))
                 return {"current": current, "change_rate": change_rate}
-        elif name == "NASDAQ":
+        elif name in ["S&P 500", "NASDAQ"]:
             url = f"https://api.stock.naver.com/index/{code}/basic"
             res = requests.get(url, headers=headers, timeout=5)
             if res.status_code == 200:
@@ -238,12 +238,12 @@ def get_snapshot(include_sparkline=False, use_cache=True):
                 if not quote:
                     continue
                 current = quote["current"]
-                # S&P 500은 KIS나 Naver에서 SPY ETF로 가져왔으므로 지수 스케일(10.05배)로 환산
-                if name == "S&P 500" and (source.startswith("Korea") or source.startswith("Naver")):
-                    current = current * 10.05
-                # NASDAQ은 KIS에서 QQQ ETF로 가져왔으므로 지수 스케일(36.75배)로 환산
+                # S&P 500은 KIS에서 SPY ETF로 가져왔으므로 지수 스케일(10.03배)로 환산
+                if name == "S&P 500" and source.startswith("Korea"):
+                    current = current * 10.03
+                # NASDAQ은 KIS에서 QQQ ETF로 가져왔으므로 지수 스케일(36.93배)로 환산
                 if name == "NASDAQ" and source.startswith("Korea"):
-                    current = current * 36.75
+                    current = current * 36.93
                 ath, ath_change_rate = get_ath_and_drawdown(name, current)
                 data[name] = {
                     "current": round(current, 2),
