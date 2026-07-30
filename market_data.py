@@ -165,8 +165,18 @@ def _fetch_naver_quote(name):
             res = requests.get(url, headers=headers, timeout=5)
             if res.status_code == 200:
                 data = res.json()
-                current = float(data.get("closePrice").replace(",", ""))
-                change_rate = float(data.get("fluctuationsRatio", 0))
+                current = float(str(data.get("closePrice")).replace(",", ""))
+                # 등락률: 필드명이 API마다 달라서 순차적으로 시도
+                rate_raw = (data.get("fluctuationsRatio")
+                            or data.get("compareToPreviousCloseRate")
+                            or data.get("fluctuationRate"))
+                if rate_raw not in (None, ""):
+                    change_rate = float(str(rate_raw).replace(",", "").replace("+", ""))
+                else:
+                    # 등락률 필드가 없으면 전일대비 가격차로 직접 계산
+                    diff = float(str(data.get("compareToPreviousClosePrice", "0")).replace(",", "").replace("+", ""))
+                    prev = current - diff
+                    change_rate = (diff / prev) * 100 if prev else 0.0
                 return {"current": current, "change_rate": change_rate}
         else:
             url = f"https://api.stock.naver.com/stock/{code}/basic"
