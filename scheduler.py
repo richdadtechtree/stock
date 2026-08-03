@@ -22,6 +22,17 @@ HOST = os.getenv("HOST", "127.0.0.1")
 # 투자 타이밍 트리거 체크 주기 (분)
 ALERT_CHECK_INTERVAL_MIN = int(os.getenv("ALERT_CHECK_INTERVAL_MIN", "10"))
 
+# 마감 브리핑 시각 (한국시각 기준).
+# 코스피·코스닥은 15:20~15:30 종가 단일가 매매로 15:30에 종가가 확정되며,
+# 그 값이 시세 API로 전파되는 데 몇 분이 걸립니다. 그래서 정각 15:30이 아니라
+# 조금 여유를 둔 15:40을 기본값으로 두어 "확정된 종가"를 잡습니다.
+BRIEFING_HOUR = int(os.getenv("BRIEFING_HOUR", "15"))
+BRIEFING_MINUTE = int(os.getenv("BRIEFING_MINUTE", "40"))
+
+# 스케줄러 기준 시간대. 서버가 UTC 등 다른 시간대에서 돌아도
+# 항상 한국시각(장 마감 시각)에 맞춰 실행되도록 명시합니다.
+SCHEDULER_TZ = os.getenv("SCHEDULER_TZ", "Asia/Seoul")
+
 
 def run_server():
     """
@@ -33,9 +44,29 @@ def run_server():
 
 def daily_job():
     """
-    Triggered daily at 15:30 — 대시보드 캡처 후 텔레그램 전송.
+    Triggered daily at 마감 브리핑 시각 — 대시보드 캡처 후 텔레그램 전송.
+
+    캡처 직전에 캐시를 무시하고 최신 종가를 한 번 새로 받아옵니다.
+    이렇게 해두면 뒤이어 대시보드가 읽는 60초 캐시에 방금 확정된 종가가 담겨,
+    브리핑 사진이 장중 직전 값이 아니라 실제 마감 수치를 보여줍니다.
     """
     print(f"[{datetime.now()}] Starting scheduled daily briefing capture...")
+
+    # 확정된 마감 종가로 캐시를 강제 갱신 (실패해도 캡처는 진행)
+    try:
+        snapshot = get_snapshot(use_cache=False)
+        if snapshot:
+            summary = ", ".join(
+                f"{name} {d['current']:,.2f}({d['change_rate']:+.2f}%)"
+                for name, d in snapshot.items()
+            )
+            print(f"[{datetime.now()}] Refreshed closing snapshot: {summary}")
+        else:
+            print(f"[{datetime.now()}] [Warn] Closing snapshot empty; capturing with existing data.")
+        get_custom_stocks_snapshot(use_cache=False)
+    except Exception as e:
+        print(f"[{datetime.now()}] [Warn] Failed to refresh closing snapshot: {e}")
+
     success = capture_and_send()
     print(f"[{datetime.now()}] Scheduled job completed. Status: {'SUCCESS' if success else 'FAILED'}")
 
@@ -132,18 +163,19 @@ def main():
     # ATH 초기 로딩 (트리거 판정 정확도를 위해 시작 시 1회)
     load_ath_from_history()
 
-    # Initialize APScheduler
-    scheduler = BlockingScheduler()
+    # Initialize APScheduler (한국시각 기준으로 고정)
+    scheduler = BlockingScheduler(timezone=SCHEDULER_TZ)
 
-    # Schedule job: Monday to Friday at 15:30 — 마감 브리핑 캡처 전송
+    # Schedule job: Monday to Friday 마감 브리핑 캡처 전송 (기본 15:40 KST)
+    briefing_label = f"{BRIEFING_HOUR:02d}:{BRIEFING_MINUTE:02d}"
     scheduler.add_job(
         daily_job,
         'cron',
         day_of_week='mon-fri',
-        hour=15,
-        minute=30,
+        hour=BRIEFING_HOUR,
+        minute=BRIEFING_MINUTE,
         id='daily_briefing',
-        name='Daily Stock Market Briefing at 15:30'
+        name=f'Daily Stock Market Briefing at {briefing_label}'
     )
 
     # Schedule job: 투자 타이밍 트리거 체크 (미장 시간대 포함 24시간 주기 체크)
@@ -157,7 +189,8 @@ def main():
 
     print("--------------------------------------------------")
     print("Stock Briefing Scheduler is now running.")
-    print("Schedule: Mon-Fri at 15:30 KST (briefing capture)")
+    print(f"Timezone: {SCHEDULER_TZ}")
+    print(f"Schedule: Mon-Fri at {briefing_label} (briefing capture)")
     print(f"Schedule: every {ALERT_CHECK_INTERVAL_MIN} min (investment timing alerts)")
     print("Press Ctrl+C to exit.")
     print("--------------------------------------------------")

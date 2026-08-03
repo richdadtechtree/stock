@@ -16,6 +16,18 @@ SCREENSHOT_PATH = "static/briefing_screenshot.png"
 # Optional executable path override (useful on sandboxes with pre-installed chromium)
 CHROMIUM_PATH = os.getenv("CHROMIUM_PATH")
 
+# 브리핑에 찍는 "마감" 시각은 항상 한국시각 기준으로 표시 (서버가 UTC여도 정확하게)
+BRIEFING_TZ = os.getenv("SCHEDULER_TZ", "Asia/Seoul")
+
+
+def _now_kst():
+    """한국시각 기준 현재 시각. zoneinfo가 없거나 실패하면 서버 로컬 시각으로 폴백."""
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo(BRIEFING_TZ))
+    except Exception:
+        return datetime.now()
+
 
 def capture_dashboard(path=SCREENSHOT_PATH):
     """
@@ -76,11 +88,11 @@ def capture_and_send():
     if not capture_dashboard(SCREENSHOT_PATH):
         return False
 
-    date_str = datetime.now().strftime("%Y년 %m월 %d일 %H:%M 마감")
+    date_str = _now_kst().strftime("%Y년 %m월 %d일 %H:%M 마감")
     caption = (
         f"📈 *주요 시장 지수 마감 브리핑*\n"
         f"📅 일시: {date_str}\n\n"
-        f"코스피, 코스닥, S&P 500, TQQQ 현황과 투자 타이밍 진행 상태를 공유합니다."
+        f"코스피, 코스닥, S&P 500, 나스닥, QLD, TQQQ 현황과 투자 타이밍 진행 상태를 공유합니다."
     )
     print("Sending photo to Telegram...")
     if send_telegram_photo(SCREENSHOT_PATH, caption):

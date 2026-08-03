@@ -34,6 +34,11 @@ SYMBOLS = {
 }
 
 
+# 네이버 금융을 1순위로 조회할 심볼 (지수 실값이 정확한 것들).
+# 코스피·코스닥은 네이버 국내지수, S&P500·나스닥은 네이버 해외지수(.INX/.IXIC)로 실값을 바로 받습니다.
+# TQQQ·QLD는 개별 ETF라 여기에 넣지 않고 기존 순서(한투 우선)를 유지합니다.
+NAVER_FIRST_SYMBOLS = {"KOSPI", "KOSDAQ", "S&P 500", "NASDAQ"}
+
 # 역대 최고가 캐시 (기본값은 안전용, 시작 시 load_ath_from_history()로 갱신)
 ATH_CACHE = {name: info["default_ath"] for name, info in SYMBOLS.items()}
 
@@ -215,12 +220,20 @@ def get_snapshot(include_sparkline=False, use_cache=True):
             for name in SYMBOLS:
                 quote = None
                 source = "None"
-                
-                # 1. 한국투자증권(KIS) API 우선 시도 (가장 공식적이며 정확한 전일대비 반영)
-                if SYMBOLS[name]["kis_type"]:
+
+                # 지수(코스피·코스닥·S&P500·나스닥)는 네이버 금융이 '지수 실값'을 정확히 제공하므로
+                # 네이버를 1순위로 사용합니다. 한투 API는 모의투자/지연 시세라 마감 지수가 어긋나서
+                # 폴백으로만 씁니다. (TQQQ·QLD 같은 개별 ETF는 기존대로 한투 우선)
+                if name in NAVER_FIRST_SYMBOLS:
+                    quote = _fetch_naver_quote(name)
+                    if quote:
+                        source = "Naver Finance"
+
+                # 1. 한국투자증권(KIS) API 시도 (지수는 폴백, ETF는 1순위)
+                if not quote and SYMBOLS[name]["kis_type"]:
                     quote = _fetch_kis_quote(name)
                     source = "Korea Investment API"
-                    
+
                 # 2. 한투 API가 실패했거나 설정되지 않은 경우 Yahoo Finance 시도
                 if not quote:
                     try:
@@ -229,7 +242,7 @@ def get_snapshot(include_sparkline=False, use_cache=True):
                     except Exception as e:
                         print(f"yfinance quote error for {name}: {e}")
                         quote = None
-                        
+
                 # 3. 한투/야후 모두 실패 시 실시간/종가 수집이 가능한 네이버 금융 폴백
                 if not quote:
                     quote = _fetch_naver_quote(name)
