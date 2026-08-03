@@ -5,6 +5,8 @@
 - 국내 지수/해외 종목은 한국투자증권 API 우선, 실패 시 yfinance 폴백
 - 역대 최고가(ATH)는 yfinance 전체 기간 데이터로 계산해 캐싱
 """
+import json
+import os
 import threading
 import time
 from datetime import datetime
@@ -13,6 +15,10 @@ import requests
 import yfinance as yf
 
 from kis_client import KISClient
+
+# 역대 최고가(ATH)를 파일에 저장해 재시작해도 잊지 않도록 함.
+# (서버에서 야후가 막혀 시작 시 ATH 자동 계산이 안 되면, 예전에 본 최고가를 여기서 복구)
+ATH_PERSIST_FILE = os.getenv("ATH_CACHE_FILE", ".ath_cache.json")
 
 # Create a custom requests session for yfinance to bypass cloud IP blocks (e.g. on Oracle Cloud, AWS)
 YF_SESSION = requests.Session()
@@ -25,8 +31,8 @@ YF_SESSION.headers.update({
 # kis_type: 'domestic' (국내지수), 'overseas' (해외주식), None (yfinance 전용)
 # S&P 500의 경우 yfinance 차단을 우회하기 위해 KIS 해외주식 API로 SPY ETF를 조회한 뒤 10배를 곱해 지수로 환산합니다.
 SYMBOLS = {
-    "KOSPI":   {"yf": "^KS11", "kis_type": "domestic", "kis_code": "0001", "default_ath": 3316.08, "max_valid_ath": 3500.0},
-    "KOSDAQ":  {"yf": "^KQ11", "kis_type": "domestic", "kis_code": "1001", "default_ath": 1062.03, "max_valid_ath": 1200.0},
+    "KOSPI":   {"yf": "^KS11", "kis_type": "domestic", "kis_code": "0001", "default_ath": 9385.59, "max_valid_ath": 12000.0},
+    "KOSDAQ":  {"yf": "^KQ11", "kis_type": "domestic", "kis_code": "1001", "default_ath": 1229.42, "max_valid_ath": 2000.0},
     "S&P 500": {"yf": "^GSPC", "kis_type": "overseas", "kis_code": ("AMS", "SPY"), "default_ath": 7620.90, "max_valid_ath": 8500.0},
     "NASDAQ":  {"yf": "^IXIC", "kis_type": "overseas", "kis_code": ("NAS", "QQQ"), "default_ath": 27190.21, "max_valid_ath": 30000.0},
     "QLD":     {"yf": "QLD",   "kis_type": "overseas", "kis_code": ("NAS", "QLD"),  "default_ath": 105.00, "max_valid_ath": 120.0},
@@ -70,37 +76,91 @@ def get_kis_client():
     return None
 
 
+def _load_persisted_ath():
+    """저장해 둔 ATH를 읽어 캐시에 반영 (상한선 이하 & 현재 캐시보다 큰 값만)."""
+    try:
+        if not os.path.exists(ATH_PERSIST_FILE):
+            return
+        with open(ATH_PERSIST_FILE, "r") as f:
+            saved = json.load(f)
+        for name, val in saved.items():
+            if name not in ATH_CACHE:
+                continue
+            max_limit = SYMBOLS.get(name, {}).get("max_valid_ath", float("inf"))
+            try:
+                v = float(val)
+            except (TypeError, ValueError):
+                continue
+            if v <= max_limit and v > ATH_CACHE.get(name, 0):
+                ATH_CACHE[name] = round(v, 2)
+    except Exception as e:
+        print(f"[ATH] persist load error: {e}")
+
+
+def _save_persisted_ath():
+    """현재 ATH 캐시를 파일에 저장 (재시작해도 최고가를 기억하도록)."""
+    try:
+        with open(ATH_PERSIST_FILE, "w") as f:
+            json.dump(ATH_CACHE, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        print(f"[ATH] persist save error: {e}")
+
+
 def load_ath_from_history():
     """
-    yfinance 전체 기간 데이터로 각 심볼의 역대 최고가(ATH)를 계산해 캐시를 갱신.
-    프로세스 시작 시 백그라운드에서 1회 호출 권장.
-    비정상적인 아웃라이어(데어터 오류 데드크로스/스파이크)는 상한선(max_valid_ath)으로 차단.
+    각 심볼의 역대(최근) 최고가(ATH)를 계산해 캐시를 갱신. 프로세스 시작 시 1회 호출 권장.
+
+    - 국내 지수(코스피·코스닥): 한투(KIS) 기간별 지수 시세로 계산 (서버에서 야후가 막혀도 동작).
+      기본 2010년부터 조회해 2000년 닷컴버블 같은 옛 고점은 제외하고 '최근 고점'을 잡음.
+    - 그 외(S&P500·나스닥·QLD·TQQQ): 야후(yfinance) 전체 기간 데이터로 계산.
+    - 비정상 아웃라이어는 상한선(max_valid_ath)으로 차단.
+    - 재시작 대비로 저장된 값(_load/_save_persisted_ath)과 함께 관리.
     """
     print("Loading historical ATH values...")
+    _load_persisted_ath()
+    client = get_kis_client()
     for name, info in SYMBOLS.items():
         try:
-            hist = yf.Ticker(info["yf"], session=YF_SESSION).history(period="max")
-            if not hist.empty:
-                max_val = float(hist["High"].max())
-                max_limit = info.get("max_valid_ath", 999999.0)
-                if max_val > max_limit:
-                    print(f"[ATH] Ignored glitchy high value {max_val} for {name} (Limit: {max_limit})")
-                    continue
-                if max_val > ATH_CACHE.get(name, 0):
-                    ATH_CACHE[name] = round(max_val, 2)
-                    print(f"[ATH] {name}: {ATH_CACHE[name]}")
+            max_val = None
+
+            # 국내 지수는 KIS 과거시세로 (야후 차단 우회)
+            if info.get("kis_type") == "domestic" and client:
+                max_val = client.get_domestic_index_high(info["kis_code"])
+                if max_val:
+                    print(f"[ATH] {name}: KIS history high = {max_val}")
+
+            # KIS로 못 구했거나 해외 종목이면 야후로 시도
+            if max_val is None:
+                hist = yf.Ticker(info["yf"], session=YF_SESSION).history(period="max")
+                if not hist.empty:
+                    max_val = float(hist["High"].max())
+
+            if max_val is None:
+                continue
+
+            max_limit = info.get("max_valid_ath", 999999.0)
+            if max_val > max_limit:
+                print(f"[ATH] Ignored glitchy high value {max_val} for {name} (Limit: {max_limit})")
+                continue
+            if max_val > ATH_CACHE.get(name, 0):
+                ATH_CACHE[name] = round(max_val, 2)
+                print(f"[ATH] {name}: {ATH_CACHE[name]}")
         except Exception as e:
             print(f"[ATH] Error fetching history for {name}: {e}")
+
+    _save_persisted_ath()
     print("ATH load completed.")
 
 
 def get_ath_and_drawdown(name, current):
     """
     역대 최고가와 고점 대비 하락률(%)을 반환.
-    현재가가 캐시된 ATH보다 높으면 신고점으로 캐시 갱신.
+    현재가가 캐시된 ATH보다 높으면 신고점으로 캐시 갱신(단, 상한선 이하일 때만 — 글리치 방어).
     """
-    if current > ATH_CACHE.get(name, 0):
+    max_limit = SYMBOLS.get(name, {}).get("max_valid_ath", float("inf"))
+    if current > ATH_CACHE.get(name, 0) and current <= max_limit:
         ATH_CACHE[name] = round(current, 2)
+        _save_persisted_ath()
     ath = ATH_CACHE.get(name, current)
     drawdown = ((current - ath) / ath) * 100 if ath > 0 else 0.0
     return ath, drawdown

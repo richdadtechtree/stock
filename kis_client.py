@@ -126,6 +126,51 @@ class KISClient:
             print(f"Error fetching KIS index {code}: {e}")
         return None
 
+    def get_domestic_index_high(self, code, period="Y", start="20100101"):
+        """
+        기간별 지수 시세(inquire-daily-indexchartprice, TR FHKUP03500100)로
+        지정 기간의 '최고가'를 계산해 반환합니다. (역대 최고가 산출용)
+
+        code: '0001'(코스피) '1001'(코스닥)
+        period: 'D'(일) 'W'(주) 'M'(월) 'Y'(년). 최근 고점은 'Y'(연봉)로 한 번에 훑음.
+        start: 조회 시작일(YYYYMMDD). 기본 2010년 — 2000년 닷컴버블 등 옛 고점은 제외하고
+               최근 고점만 잡기 위함. (야후가 막힌 서버에서도 KIS로 동작)
+        """
+        if not self.token:
+            return None
+
+        url = f"{self.base_url}/uapi/domestic-stock/v1/quotations/inquire-daily-indexchartprice"
+        today = datetime.now().strftime("%Y%m%d")
+        params = {
+            "FID_COND_MRKT_DIV_CODE": "U",
+            "FID_INPUT_ISCD": code,
+            "FID_INPUT_DATE_1": start,
+            "FID_INPUT_DATE_2": today,
+            "FID_PERIOD_DIV_CODE": period,
+        }
+
+        try:
+            headers = self.get_headers("FHKUP03500100")
+            response = requests.get(url, headers=headers, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+
+            if data.get("rt_cd") == "0":
+                rows = data.get("output2") or []
+                highs = []
+                for r in rows:
+                    v = r.get("bstp_nmix_hgpr")
+                    if v not in (None, "", "0"):
+                        try:
+                            highs.append(float(str(v).replace(",", "")))
+                        except ValueError:
+                            pass
+                if highs:
+                    return max(highs)
+        except Exception as e:
+            print(f"Error fetching KIS index history {code}: {e}")
+        return None
+
     def get_domestic_price(self, code):
         """
         Fetches domestic stock/ETF current price and rate of change.

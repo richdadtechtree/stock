@@ -7,6 +7,9 @@
 # Alert trigger state (SQLite)
 alert_state.db
 
+# 역대 최고가(ATH) 저장 파일 (재시작 대비 상태 파일)
+.ath_cache.json
+
 # Screenshots
 static/briefing_screenshot.png
 
