@@ -256,20 +256,25 @@ body {
 
 .ath-drawdown {
     font-weight: 800;
-    font-size: 1.0rem;
-    padding: 3px 8px;
+    font-size: 1.25rem;
+    padding: 4px 10px;
     border-radius: 6px;
     font-family: 'Outfit', sans-serif;
+    letter-spacing: 0.2px;
 }
 
 .ath-drawdown.up {
-    color: var(--stock-up);
-    background-color: var(--stock-up-bg);
+    /* 상승(빨강) — 기존보다 밝게 + 배경 대비 강화 */
+    color: #FF6B84;
+    background-color: rgba(255, 59, 92, 0.20);
+    text-shadow: 0 0 10px rgba(255, 59, 92, 0.35);
 }
 
 .ath-drawdown.down {
-    color: var(--stock-down);
-    background-color: var(--stock-down-bg);
+    /* 하락(파랑) — 기존보다 밝게 + 배경 대비 강화 */
+    color: #6BB2FF;
+    background-color: rgba(46, 124, 255, 0.22);
+    text-shadow: 0 0 10px rgba(46, 124, 255, 0.35);
 }
 
 /* Sparkline Trend Chart */
