@@ -34,10 +34,11 @@ SYMBOLS = {
 }
 
 
-# 네이버 금융을 1순위로 조회할 심볼 (지수 실값이 정확한 것들).
-# 코스피·코스닥은 네이버 국내지수, S&P500·나스닥은 네이버 해외지수(.INX/.IXIC)로 실값을 바로 받습니다.
-# TQQQ·QLD는 개별 ETF라 여기에 넣지 않고 기존 순서(한투 우선)를 유지합니다.
-NAVER_FIRST_SYMBOLS = {"KOSPI", "KOSDAQ", "S&P 500", "NASDAQ"}
+# 네이버 금융을 1순위로 조회할 심볼.
+# 실측 결과, 한투(KIS) API는 국내지수(코스피 글리치)와 TQQQ에서 값이 어긋나는 반면
+# 네이버는 6개 모두 정확했습니다. 그래서 전부 네이버를 1순위로 두고 한투는 폴백으로만 씁니다.
+# (코스피·코스닥=네이버 국내지수, S&P500·나스닥=네이버 해외지수 .INX/.IXIC, TQQQ·QLD=네이버 해외주식)
+NAVER_FIRST_SYMBOLS = {"KOSPI", "KOSDAQ", "S&P 500", "NASDAQ", "QLD", "TQQQ"}
 
 # 역대 최고가 캐시 (기본값은 안전용, 시작 시 load_ath_from_history()로 갱신)
 ATH_CACHE = {name: info["default_ath"] for name, info in SYMBOLS.items()}
